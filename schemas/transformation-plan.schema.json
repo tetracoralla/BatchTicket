@@ -1,0 +1,2433 @@
+{
+  "$defs": {
+    "Aggregate": {
+      "additionalProperties": false,
+      "properties": {
+        "op": {
+          "enum": [
+            "sum",
+            "avg",
+            "min",
+            "max",
+            "count",
+            "count_distinct",
+            "first",
+            "last"
+          ],
+          "title": "Op",
+          "type": "string"
+        },
+        "field": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Field"
+        },
+        "as": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "As"
+        }
+      },
+      "required": [
+        "op"
+      ],
+      "title": "Aggregate",
+      "type": "object"
+    },
+    "CastStep": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "anyOf": [
+            {
+              "pattern": "^[A-Za-z_][A-Za-z0-9_-]*$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Id"
+        },
+        "source": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source"
+        },
+        "op": {
+          "const": "cast",
+          "title": "Op",
+          "type": "string"
+        },
+        "fields": {
+          "anyOf": [
+            {
+              "additionalProperties": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "minProperties": 1,
+              "propertyNames": {
+                "minLength": 1
+              },
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Fields"
+        },
+        "field": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Field"
+        },
+        "to": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "To"
+        }
+      },
+      "required": [
+        "op"
+      ],
+      "title": "CastStep",
+      "type": "object"
+    },
+    "Condition": {
+      "additionalProperties": false,
+      "properties": {
+        "field": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Field"
+        },
+        "eq": {
+          "anyOf": [
+            {},
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Eq"
+        },
+        "ne": {
+          "anyOf": [
+            {},
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Ne"
+        },
+        "gt": {
+          "anyOf": [
+            {},
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Gt"
+        },
+        "gte": {
+          "anyOf": [
+            {},
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Gte"
+        },
+        "lt": {
+          "anyOf": [
+            {},
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Lt"
+        },
+        "lte": {
+          "anyOf": [
+            {},
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Lte"
+        },
+        "in": {
+          "anyOf": [
+            {
+              "items": {},
+              "maxItems": 10000,
+              "minItems": 1,
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "In"
+        },
+        "not_in": {
+          "anyOf": [
+            {
+              "items": {},
+              "maxItems": 10000,
+              "minItems": 1,
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Not In"
+        },
+        "contains": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Contains"
+        },
+        "starts_with": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Starts With"
+        },
+        "ends_with": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Ends With"
+        },
+        "is_null": {
+          "anyOf": [
+            {
+              "const": true,
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Is Null"
+        },
+        "not_null": {
+          "anyOf": [
+            {
+              "const": true,
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Not Null"
+        },
+        "all": {
+          "anyOf": [
+            {
+              "items": {
+                "$ref": "#/$defs/Condition"
+              },
+              "minItems": 1,
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "All"
+        },
+        "any": {
+          "anyOf": [
+            {
+              "items": {
+                "$ref": "#/$defs/Condition"
+              },
+              "minItems": 1,
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Any"
+        },
+        "not": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Condition"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "title": "Condition",
+      "type": "object"
+    },
+    "DedupeStep": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "anyOf": [
+            {
+              "pattern": "^[A-Za-z_][A-Za-z0-9_-]*$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Id"
+        },
+        "source": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source"
+        },
+        "op": {
+          "const": "dedupe",
+          "title": "Op",
+          "type": "string"
+        },
+        "fields": {
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Fields",
+          "type": "array"
+        },
+        "keep": {
+          "default": "first",
+          "enum": [
+            "first",
+            "last"
+          ],
+          "title": "Keep",
+          "type": "string"
+        }
+      },
+      "required": [
+        "op",
+        "fields"
+      ],
+      "title": "DedupeStep",
+      "type": "object"
+    },
+    "DeleteStep": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "anyOf": [
+            {
+              "pattern": "^[A-Za-z_][A-Za-z0-9_-]*$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Id"
+        },
+        "source": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source"
+        },
+        "op": {
+          "const": "delete",
+          "title": "Op",
+          "type": "string"
+        },
+        "path": {
+          "minLength": 1,
+          "title": "Path",
+          "type": "string"
+        }
+      },
+      "required": [
+        "op",
+        "path"
+      ],
+      "title": "DeleteStep",
+      "type": "object"
+    },
+    "DeriveStep": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "anyOf": [
+            {
+              "pattern": "^[A-Za-z_][A-Za-z0-9_-]*$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Id"
+        },
+        "source": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source"
+        },
+        "op": {
+          "const": "derive",
+          "title": "Op",
+          "type": "string"
+        },
+        "field": {
+          "minLength": 1,
+          "title": "Field",
+          "type": "string"
+        },
+        "expr": {
+          "$ref": "#/$defs/Expression"
+        }
+      },
+      "required": [
+        "op",
+        "field",
+        "expr"
+      ],
+      "title": "DeriveStep",
+      "type": "object"
+    },
+    "DropStep": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "anyOf": [
+            {
+              "pattern": "^[A-Za-z_][A-Za-z0-9_-]*$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Id"
+        },
+        "source": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source"
+        },
+        "op": {
+          "const": "drop",
+          "title": "Op",
+          "type": "string"
+        },
+        "fields": {
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Fields",
+          "type": "array"
+        }
+      },
+      "required": [
+        "op",
+        "fields"
+      ],
+      "title": "DropStep",
+      "type": "object"
+    },
+    "ExplodeStep": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "anyOf": [
+            {
+              "pattern": "^[A-Za-z_][A-Za-z0-9_-]*$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Id"
+        },
+        "source": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source"
+        },
+        "op": {
+          "const": "explode",
+          "title": "Op",
+          "type": "string"
+        },
+        "field": {
+          "minLength": 1,
+          "title": "Field",
+          "type": "string"
+        }
+      },
+      "required": [
+        "op",
+        "field"
+      ],
+      "title": "ExplodeStep",
+      "type": "object"
+    },
+    "Expression": {
+      "additionalProperties": false,
+      "properties": {
+        "field": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Field"
+        },
+        "value": {
+          "anyOf": [
+            {},
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Value"
+        },
+        "add": {
+          "anyOf": [
+            {
+              "items": {
+                "$ref": "#/$defs/Expression"
+              },
+              "minItems": 2,
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Add"
+        },
+        "subtract": {
+          "anyOf": [
+            {
+              "items": {
+                "$ref": "#/$defs/Expression"
+              },
+              "minItems": 2,
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Subtract"
+        },
+        "multiply": {
+          "anyOf": [
+            {
+              "items": {
+                "$ref": "#/$defs/Expression"
+              },
+              "minItems": 2,
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Multiply"
+        },
+        "divide": {
+          "anyOf": [
+            {
+              "items": {
+                "$ref": "#/$defs/Expression"
+              },
+              "maxItems": 2,
+              "minItems": 2,
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Divide"
+        },
+        "concat": {
+          "anyOf": [
+            {
+              "items": {
+                "$ref": "#/$defs/Expression"
+              },
+              "minItems": 1,
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Concat"
+        },
+        "coalesce": {
+          "anyOf": [
+            {
+              "items": {
+                "$ref": "#/$defs/Expression"
+              },
+              "minItems": 1,
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Coalesce"
+        },
+        "lower": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Expression"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "upper": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Expression"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "substring": {
+          "anyOf": [
+            {
+              "items": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/Expression"
+                  },
+                  {
+                    "type": "integer"
+                  }
+                ]
+              },
+              "maxItems": 3,
+              "minItems": 2,
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Substring"
+        },
+        "round": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Expression"
+            },
+            {
+              "items": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/Expression"
+                  },
+                  {
+                    "type": "integer"
+                  }
+                ]
+              },
+              "maxItems": 2,
+              "minItems": 1,
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Round"
+        }
+      },
+      "title": "Expression",
+      "type": "object"
+    },
+    "FieldAlias": {
+      "additionalProperties": false,
+      "properties": {
+        "field": {
+          "minLength": 1,
+          "title": "Field",
+          "type": "string"
+        },
+        "as": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "As"
+        }
+      },
+      "required": [
+        "field"
+      ],
+      "title": "FieldAlias",
+      "type": "object"
+    },
+    "FieldExistsAssertion": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Id"
+        },
+        "type": {
+          "const": "field_exists",
+          "title": "Type",
+          "type": "string"
+        },
+        "field": {
+          "minLength": 1,
+          "title": "Field",
+          "type": "string"
+        }
+      },
+      "required": [
+        "type",
+        "field"
+      ],
+      "title": "FieldExistsAssertion",
+      "type": "object"
+    },
+    "FilterStep": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "anyOf": [
+            {
+              "pattern": "^[A-Za-z_][A-Za-z0-9_-]*$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Id"
+        },
+        "source": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source"
+        },
+        "op": {
+          "const": "filter",
+          "title": "Op",
+          "type": "string"
+        },
+        "where": {
+          "$ref": "#/$defs/Condition"
+        }
+      },
+      "required": [
+        "op",
+        "where"
+      ],
+      "title": "FilterStep",
+      "type": "object"
+    },
+    "FlattenStep": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "anyOf": [
+            {
+              "pattern": "^[A-Za-z_][A-Za-z0-9_-]*$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Id"
+        },
+        "source": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source"
+        },
+        "op": {
+          "const": "flatten",
+          "title": "Op",
+          "type": "string"
+        },
+        "separator": {
+          "default": "_",
+          "pattern": "^[^\\\\]{1,4}$",
+          "title": "Separator",
+          "type": "string"
+        }
+      },
+      "required": [
+        "op"
+      ],
+      "title": "FlattenStep",
+      "type": "object"
+    },
+    "GroupStep": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "anyOf": [
+            {
+              "pattern": "^[A-Za-z_][A-Za-z0-9_-]*$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Id"
+        },
+        "source": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source"
+        },
+        "op": {
+          "const": "group",
+          "title": "Op",
+          "type": "string"
+        },
+        "by": {
+          "items": {
+            "anyOf": [
+              {
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "$ref": "#/$defs/FieldAlias"
+              }
+            ]
+          },
+          "title": "By",
+          "type": "array"
+        },
+        "aggregates": {
+          "items": {
+            "$ref": "#/$defs/Aggregate"
+          },
+          "minItems": 1,
+          "title": "Aggregates",
+          "type": "array"
+        }
+      },
+      "required": [
+        "op",
+        "aggregates"
+      ],
+      "title": "GroupStep",
+      "type": "object"
+    },
+    "InlineSource": {
+      "additionalProperties": false,
+      "properties": {
+        "inline": {
+          "title": "Inline"
+        },
+        "format": {
+          "anyOf": [
+            {
+              "enum": [
+                "json",
+                "jsonl",
+                "csv",
+                "tsv",
+                "yaml",
+                "parquet"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Format"
+        },
+        "select": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Select"
+        },
+        "kind": {
+          "anyOf": [
+            {
+              "enum": [
+                "tree",
+                "table"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Kind"
+        }
+      },
+      "required": [
+        "inline"
+      ],
+      "title": "InlineSource",
+      "type": "object"
+    },
+    "JoinStep": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "anyOf": [
+            {
+              "pattern": "^[A-Za-z_][A-Za-z0-9_-]*$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Id"
+        },
+        "op": {
+          "const": "join",
+          "title": "Op",
+          "type": "string"
+        },
+        "left": {
+          "minLength": 1,
+          "title": "Left",
+          "type": "string"
+        },
+        "right": {
+          "minLength": 1,
+          "title": "Right",
+          "type": "string"
+        },
+        "type": {
+          "default": "inner",
+          "enum": [
+            "inner",
+            "left",
+            "right",
+            "full"
+          ],
+          "title": "Type",
+          "type": "string"
+        },
+        "on": {
+          "items": {
+            "items": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "maxItems": 2,
+            "minItems": 2,
+            "type": "array"
+          },
+          "minItems": 1,
+          "title": "On",
+          "type": "array"
+        },
+        "right_prefix": {
+          "default": "right_",
+          "title": "Right Prefix",
+          "type": "string"
+        }
+      },
+      "required": [
+        "op",
+        "left",
+        "right",
+        "on"
+      ],
+      "title": "JoinStep",
+      "type": "object"
+    },
+    "LimitStep": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "anyOf": [
+            {
+              "pattern": "^[A-Za-z_][A-Za-z0-9_-]*$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Id"
+        },
+        "source": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source"
+        },
+        "op": {
+          "const": "limit",
+          "title": "Op",
+          "type": "string"
+        },
+        "count": {
+          "minimum": 0,
+          "title": "Count",
+          "type": "integer"
+        },
+        "offset": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Offset",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "op",
+        "count"
+      ],
+      "title": "LimitStep",
+      "type": "object"
+    },
+    "LimitsModel": {
+      "additionalProperties": false,
+      "properties": {
+        "max_input_bytes": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "maximum": 8589934592,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Max Input Bytes"
+        },
+        "max_sources": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "maximum": 100,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Max Sources"
+        },
+        "max_rows": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "maximum": 50000000,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Max Rows"
+        },
+        "max_items": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "maximum": 50000000,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Max Items"
+        },
+        "max_depth": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "maximum": 500,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Max Depth"
+        },
+        "max_steps": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "maximum": 100,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Max Steps"
+        },
+        "max_memory_mb": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "maximum": 4096,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Max Memory Mb"
+        },
+        "max_temp_bytes": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "maximum": 17179869184,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Max Temp Bytes"
+        },
+        "timeout_ms": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "maximum": 300000,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Timeout Ms"
+        },
+        "max_response_bytes": {
+          "anyOf": [
+            {
+              "maximum": 1048576,
+              "minimum": 256,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Max Response Bytes"
+        }
+      },
+      "title": "LimitsModel",
+      "type": "object"
+    },
+    "MergeStep": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "anyOf": [
+            {
+              "pattern": "^[A-Za-z_][A-Za-z0-9_-]*$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Id"
+        },
+        "source": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source"
+        },
+        "op": {
+          "const": "merge",
+          "title": "Op",
+          "type": "string"
+        },
+        "value": {
+          "additionalProperties": true,
+          "title": "Value",
+          "type": "object"
+        },
+        "deep": {
+          "default": true,
+          "title": "Deep",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "op",
+        "value"
+      ],
+      "title": "MergeStep",
+      "type": "object"
+    },
+    "NotNullAssertion": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Id"
+        },
+        "type": {
+          "const": "not_null",
+          "title": "Type",
+          "type": "string"
+        },
+        "field": {
+          "minLength": 1,
+          "title": "Field",
+          "type": "string"
+        }
+      },
+      "required": [
+        "type",
+        "field"
+      ],
+      "title": "NotNullAssertion",
+      "type": "object"
+    },
+    "OutputSpec": {
+      "additionalProperties": false,
+      "properties": {
+        "path": {
+          "minLength": 1,
+          "title": "Path",
+          "type": "string"
+        },
+        "format": {
+          "anyOf": [
+            {
+              "enum": [
+                "json",
+                "jsonl",
+                "csv",
+                "tsv",
+                "yaml",
+                "parquet"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Format"
+        },
+        "overwrite": {
+          "default": false,
+          "title": "Overwrite",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "path"
+      ],
+      "title": "OutputSpec",
+      "type": "object"
+    },
+    "PathSource": {
+      "additionalProperties": false,
+      "properties": {
+        "path": {
+          "minLength": 1,
+          "title": "Path",
+          "type": "string"
+        },
+        "format": {
+          "anyOf": [
+            {
+              "enum": [
+                "json",
+                "jsonl",
+                "csv",
+                "tsv",
+                "yaml",
+                "parquet"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Format"
+        },
+        "select": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Select"
+        },
+        "kind": {
+          "anyOf": [
+            {
+              "enum": [
+                "tree",
+                "table"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Kind"
+        }
+      },
+      "required": [
+        "path"
+      ],
+      "title": "PathSource",
+      "type": "object"
+    },
+    "PivotStep": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "anyOf": [
+            {
+              "pattern": "^[A-Za-z_][A-Za-z0-9_-]*$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Id"
+        },
+        "source": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source"
+        },
+        "op": {
+          "const": "pivot",
+          "title": "Op",
+          "type": "string"
+        },
+        "by": {
+          "items": {
+            "anyOf": [
+              {
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "$ref": "#/$defs/FieldAlias"
+              }
+            ]
+          },
+          "title": "By",
+          "type": "array"
+        },
+        "field": {
+          "minLength": 1,
+          "title": "Field",
+          "type": "string"
+        },
+        "value": {
+          "minLength": 1,
+          "title": "Value",
+          "type": "string"
+        },
+        "values": {
+          "items": {},
+          "maxItems": 100,
+          "minItems": 1,
+          "title": "Values",
+          "type": "array"
+        },
+        "aggregate": {
+          "default": "sum",
+          "enum": [
+            "sum",
+            "avg",
+            "min",
+            "max",
+            "count"
+          ],
+          "title": "Aggregate",
+          "type": "string"
+        },
+        "aliases": {
+          "additionalProperties": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "title": "Aliases",
+          "type": "object"
+        }
+      },
+      "required": [
+        "op",
+        "field",
+        "value",
+        "values"
+      ],
+      "title": "PivotStep",
+      "type": "object"
+    },
+    "RenameStep": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "anyOf": [
+            {
+              "pattern": "^[A-Za-z_][A-Za-z0-9_-]*$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Id"
+        },
+        "source": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source"
+        },
+        "op": {
+          "const": "rename",
+          "title": "Op",
+          "type": "string"
+        },
+        "fields": {
+          "additionalProperties": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "minProperties": 1,
+          "propertyNames": {
+            "minLength": 1
+          },
+          "title": "Fields",
+          "type": "object"
+        }
+      },
+      "required": [
+        "op",
+        "fields"
+      ],
+      "title": "RenameStep",
+      "type": "object"
+    },
+    "ReturnPolicy": {
+      "additionalProperties": false,
+      "properties": {
+        "mode": {
+          "default": "auto",
+          "enum": [
+            "auto",
+            "inline",
+            "summary",
+            "reference"
+          ],
+          "title": "Mode",
+          "type": "string"
+        },
+        "sample_rows": {
+          "default": 5,
+          "maximum": 100,
+          "minimum": 0,
+          "title": "Sample Rows",
+          "type": "integer"
+        },
+        "max_inline_bytes": {
+          "default": 65536,
+          "exclusiveMinimum": 0,
+          "maximum": 1048576,
+          "title": "Max Inline Bytes",
+          "type": "integer"
+        }
+      },
+      "title": "ReturnPolicy",
+      "type": "object"
+    },
+    "RowCountAssertion": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Id"
+        },
+        "type": {
+          "const": "row_count",
+          "title": "Type",
+          "type": "string"
+        },
+        "eq": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Eq"
+        },
+        "min": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Min"
+        },
+        "max": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Max"
+        }
+      },
+      "required": [
+        "type"
+      ],
+      "title": "RowCountAssertion",
+      "type": "object"
+    },
+    "SelectStep": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "anyOf": [
+            {
+              "pattern": "^[A-Za-z_][A-Za-z0-9_-]*$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Id"
+        },
+        "source": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source"
+        },
+        "op": {
+          "const": "select",
+          "title": "Op",
+          "type": "string"
+        },
+        "fields": {
+          "items": {
+            "anyOf": [
+              {
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "$ref": "#/$defs/FieldAlias"
+              }
+            ]
+          },
+          "minItems": 1,
+          "title": "Fields",
+          "type": "array"
+        }
+      },
+      "required": [
+        "op",
+        "fields"
+      ],
+      "title": "SelectStep",
+      "type": "object"
+    },
+    "SetStep": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "anyOf": [
+            {
+              "pattern": "^[A-Za-z_][A-Za-z0-9_-]*$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Id"
+        },
+        "source": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source"
+        },
+        "op": {
+          "const": "set",
+          "title": "Op",
+          "type": "string"
+        },
+        "path": {
+          "minLength": 1,
+          "title": "Path",
+          "type": "string"
+        },
+        "value": {
+          "title": "Value"
+        },
+        "create": {
+          "default": false,
+          "title": "Create",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "op",
+        "path",
+        "value"
+      ],
+      "title": "SetStep",
+      "type": "object"
+    },
+    "SortDescriptor": {
+      "additionalProperties": false,
+      "properties": {
+        "field": {
+          "minLength": 1,
+          "title": "Field",
+          "type": "string"
+        },
+        "direction": {
+          "default": "asc",
+          "enum": [
+            "asc",
+            "desc"
+          ],
+          "title": "Direction",
+          "type": "string"
+        },
+        "nulls": {
+          "default": "last",
+          "enum": [
+            "first",
+            "last"
+          ],
+          "title": "Nulls",
+          "type": "string"
+        }
+      },
+      "required": [
+        "field"
+      ],
+      "title": "SortDescriptor",
+      "type": "object"
+    },
+    "SortStep": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "anyOf": [
+            {
+              "pattern": "^[A-Za-z_][A-Za-z0-9_-]*$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Id"
+        },
+        "source": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source"
+        },
+        "op": {
+          "const": "sort",
+          "title": "Op",
+          "type": "string"
+        },
+        "by": {
+          "items": {
+            "anyOf": [
+              {
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "$ref": "#/$defs/SortDescriptor"
+              }
+            ]
+          },
+          "minItems": 1,
+          "title": "By",
+          "type": "array"
+        }
+      },
+      "required": [
+        "op",
+        "by"
+      ],
+      "title": "SortStep",
+      "type": "object"
+    },
+    "TypeAssertion": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Id"
+        },
+        "type": {
+          "const": "type",
+          "title": "Type",
+          "type": "string"
+        },
+        "field": {
+          "minLength": 1,
+          "title": "Field",
+          "type": "string"
+        },
+        "is": {
+          "minLength": 1,
+          "title": "Is",
+          "type": "string"
+        }
+      },
+      "required": [
+        "type",
+        "field",
+        "is"
+      ],
+      "title": "TypeAssertion",
+      "type": "object"
+    },
+    "UnflattenStep": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "anyOf": [
+            {
+              "pattern": "^[A-Za-z_][A-Za-z0-9_-]*$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Id"
+        },
+        "source": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source"
+        },
+        "op": {
+          "const": "unflatten",
+          "title": "Op",
+          "type": "string"
+        },
+        "separator": {
+          "default": "_",
+          "pattern": "^[^\\\\]{1,4}$",
+          "title": "Separator",
+          "type": "string"
+        }
+      },
+      "required": [
+        "op"
+      ],
+      "title": "UnflattenStep",
+      "type": "object"
+    },
+    "UniqueAssertion": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Id"
+        },
+        "type": {
+          "const": "unique",
+          "title": "Type",
+          "type": "string"
+        },
+        "field": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Field"
+        },
+        "fields": {
+          "anyOf": [
+            {
+              "items": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "minItems": 1,
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Fields"
+        }
+      },
+      "required": [
+        "type"
+      ],
+      "title": "UniqueAssertion",
+      "type": "object"
+    },
+    "UnpivotStep": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "anyOf": [
+            {
+              "pattern": "^[A-Za-z_][A-Za-z0-9_-]*$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Id"
+        },
+        "source": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source"
+        },
+        "op": {
+          "const": "unpivot",
+          "title": "Op",
+          "type": "string"
+        },
+        "fields": {
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Fields",
+          "type": "array"
+        },
+        "keep": {
+          "anyOf": [
+            {
+              "items": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Keep"
+        },
+        "name_field": {
+          "default": "field",
+          "minLength": 1,
+          "title": "Name Field",
+          "type": "string"
+        },
+        "value_field": {
+          "default": "value",
+          "minLength": 1,
+          "title": "Value Field",
+          "type": "string"
+        }
+      },
+      "required": [
+        "op",
+        "fields"
+      ],
+      "title": "UnpivotStep",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "version": {
+      "const": "1",
+      "title": "Version",
+      "type": "string"
+    },
+    "sources": {
+      "additionalProperties": {
+        "anyOf": [
+          {
+            "$ref": "#/$defs/PathSource"
+          },
+          {
+            "$ref": "#/$defs/InlineSource"
+          }
+        ]
+      },
+      "propertyNames": {
+        "minLength": 1
+      },
+      "title": "Sources",
+      "type": "object"
+    },
+    "steps": {
+      "items": {
+        "discriminator": {
+          "mapping": {
+            "cast": "#/$defs/CastStep",
+            "dedupe": "#/$defs/DedupeStep",
+            "delete": "#/$defs/DeleteStep",
+            "derive": "#/$defs/DeriveStep",
+            "drop": "#/$defs/DropStep",
+            "explode": "#/$defs/ExplodeStep",
+            "filter": "#/$defs/FilterStep",
+            "flatten": "#/$defs/FlattenStep",
+            "group": "#/$defs/GroupStep",
+            "join": "#/$defs/JoinStep",
+            "limit": "#/$defs/LimitStep",
+            "merge": "#/$defs/MergeStep",
+            "pivot": "#/$defs/PivotStep",
+            "rename": "#/$defs/RenameStep",
+            "select": "#/$defs/SelectStep",
+            "set": "#/$defs/SetStep",
+            "sort": "#/$defs/SortStep",
+            "unflatten": "#/$defs/UnflattenStep",
+            "unpivot": "#/$defs/UnpivotStep"
+          },
+          "propertyName": "op"
+        },
+        "oneOf": [
+          {
+            "$ref": "#/$defs/FilterStep"
+          },
+          {
+            "$ref": "#/$defs/SelectStep"
+          },
+          {
+            "$ref": "#/$defs/DropStep"
+          },
+          {
+            "$ref": "#/$defs/RenameStep"
+          },
+          {
+            "$ref": "#/$defs/SortStep"
+          },
+          {
+            "$ref": "#/$defs/LimitStep"
+          },
+          {
+            "$ref": "#/$defs/DedupeStep"
+          },
+          {
+            "$ref": "#/$defs/CastStep"
+          },
+          {
+            "$ref": "#/$defs/DeriveStep"
+          },
+          {
+            "$ref": "#/$defs/ExplodeStep"
+          },
+          {
+            "$ref": "#/$defs/JoinStep"
+          },
+          {
+            "$ref": "#/$defs/GroupStep"
+          },
+          {
+            "$ref": "#/$defs/PivotStep"
+          },
+          {
+            "$ref": "#/$defs/UnpivotStep"
+          },
+          {
+            "$ref": "#/$defs/FlattenStep"
+          },
+          {
+            "$ref": "#/$defs/UnflattenStep"
+          },
+          {
+            "$ref": "#/$defs/SetStep"
+          },
+          {
+            "$ref": "#/$defs/DeleteStep"
+          },
+          {
+            "$ref": "#/$defs/MergeStep"
+          }
+        ]
+      },
+      "maxItems": 100,
+      "minItems": 1,
+      "title": "Steps",
+      "type": "array"
+    },
+    "assert": {
+      "anyOf": [
+        {
+          "items": {
+            "discriminator": {
+              "mapping": {
+                "field_exists": "#/$defs/FieldExistsAssertion",
+                "not_null": "#/$defs/NotNullAssertion",
+                "row_count": "#/$defs/RowCountAssertion",
+                "type": "#/$defs/TypeAssertion",
+                "unique": "#/$defs/UniqueAssertion"
+              },
+              "propertyName": "type"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/$defs/FieldExistsAssertion"
+              },
+              {
+                "$ref": "#/$defs/NotNullAssertion"
+              },
+              {
+                "$ref": "#/$defs/UniqueAssertion"
+              },
+              {
+                "$ref": "#/$defs/RowCountAssertion"
+              },
+              {
+                "$ref": "#/$defs/TypeAssertion"
+              }
+            ]
+          },
+          "type": "array"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Assert"
+    },
+    "schema": {
+      "anyOf": [
+        {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Schema"
+    },
+    "output": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/OutputSpec"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "return": {
+      "$ref": "#/$defs/ReturnPolicy"
+    },
+    "limits": {
+      "$ref": "#/$defs/LimitsModel"
+    },
+    "dry_run": {
+      "default": false,
+      "title": "Dry Run",
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "version",
+    "sources",
+    "steps"
+  ],
+  "title": "Agent Data Transformer Plan v1",
+  "type": "object",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://openadam.local/schemas/data-transformer/plan-v1.json"
+}

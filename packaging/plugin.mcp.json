@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "data-transformer": {
+      "command": "./runtime/adt-mcp/adt-mcp",
+      "args": [],
+      "cwd": ".",
+      "env_vars": ["ADT_WORKSPACE_ROOT"]
+    }
+  }
+}

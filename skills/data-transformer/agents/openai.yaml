@@ -1,0 +1,12 @@
+interface:
+  display_name: "Data Transformer"
+  short_description: "Deterministic structured-data transforms for Agents"
+  default_prompt: "Use $data-transformer to inspect and reshape this structured data safely."
+dependencies:
+  tools:
+    - type: "mcp"
+      value: "data-transformer"
+      description: "Local Data Transformer MCP server"
+      transport: "stdio"
+policy:
+  allow_implicit_invocation: true

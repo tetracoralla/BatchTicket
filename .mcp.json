@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "data-transformer": {
+      "command": "uv",
+      "args": ["run", "--frozen", "--no-sync", "--project", ".", "adt-mcp"],
+      "cwd": ".",
+      "env_vars": ["ADT_WORKSPACE_ROOT"]
+    }
+  }
+}

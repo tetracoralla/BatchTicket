@@ -1,0 +1,23 @@
+{
+  "name": "data-transformer",
+  "version": "0.1.0",
+  "description": "Deterministic structured-data inspection, transformation, validation, and diff for Agents",
+  "author": {
+    "name": "openAdam"
+  },
+  "skills": "./skills/",
+  "mcpServers": "./.mcp.json",
+  "interface": {
+    "displayName": "Data Transformer",
+    "shortDescription": "Deterministic typed data pipes for Agents.",
+    "longDescription": "Inspect and reshape structured tool output through a safe, versioned transformation plan with compact samples, validation, and change receipts.",
+    "developerName": "openAdam",
+    "category": "Productivity",
+    "capabilities": ["Inspect", "Transform", "Validate", "Compare"],
+    "defaultPrompt": [
+      "Inspect this structured data without loading the full payload.",
+      "Reshape this tool output for the next tool safely.",
+      "Validate and compare these datasets deterministically."
+    ]
+  }
+}

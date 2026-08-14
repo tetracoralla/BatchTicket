@@ -1,0 +1,7 @@
+[
+  {
+    "id": "user_id_required",
+    "type": "not_null",
+    "field": "userId"
+  }
+]

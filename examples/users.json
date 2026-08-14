@@ -1,0 +1,11 @@
+{
+  "status": 200,
+  "data": {
+    "users": [
+      {"userId": 123, "age": 34, "profile": {"name": "Alice", "country": "US"}},
+      {"userId": 456, "age": 16, "profile": {"name": "Bob", "country": "CN"}},
+      {"userId": 789, "age": 28, "profile": {"name": "Chen", "country": "CN"}}
+    ]
+  }
+}
+
