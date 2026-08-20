@@ -78,5 +78,6 @@ This restriction does not block publishing the source repository or building the
 - Fresh isolated Codex host: one `data_validate` call, both assertions passed, no retry or generic
   fallback. The final publication rerun used 74,154 input tokens (54,528 cached); host-level
   context cost remains high and host-dependent.
-- Public source repository: ready for owner publication step. Prebuilt plugin upload: NO-GO as
-  stated above. Business/experience acceptance: Pending owner verdict.
+- Public source repository: published at `https://github.com/tetracoralla/BatchTicket` from
+  commit `f6d3de2`. Prebuilt plugin upload: NO-GO as stated above. Business/experience
+  acceptance: Pending owner verdict.
