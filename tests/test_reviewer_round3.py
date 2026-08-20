@@ -17,7 +17,7 @@ from data_transformer import DataTransformer
 from data_transformer.cli import _spool_stdin
 from data_transformer.errors import DataTransformerError
 from data_transformer.json_values import canonical_json
-from data_transformer.mcp_server import data_inspect, mcp
+from data_transformer.mcp_server import data_inspect, data_transform, mcp
 
 
 def _plan(rows, steps, **extra):
@@ -101,7 +101,56 @@ def test_mcp_complete_result_envelope_obeys_response_budget() -> None:
 
     assert result.structuredContent["status"] == "ok"
     assert len(encoded) <= 2048
-    assert result.content[0].text == "inspect: ok"
+    assert result.content[0].text.startswith("inspect: ok; rows=1; fields=field_00")
+    assert len(result.content[0].text.encode("utf-8")) <= 256
+
+
+def test_mcp_adaptation_summary_uses_selected_record_set_and_carries_small_draft() -> None:
+    result = asyncio.run(
+        data_inspect(
+            {
+                "inline": {
+                    "events": [{"event": "created"}],
+                    "users": [{"source_id": 2}],
+                }
+            },
+            target_schema={
+                "type": "object",
+                "properties": {"id": {"type": "integer"}},
+                "required": ["id"],
+            },
+            mappings={"id": "source_id"},
+        )
+    )
+
+    text = result.content[0].text
+    assert text.startswith(
+        "inspect: ok; adaptation=ready; record_set=users[*]; mappings=1; unresolved=0"
+    )
+    assert "; draft_plan=" in text
+    assert '"select":"users[*]"' in text
+    assert "record_set=events[*]" not in text
+
+
+def test_mcp_transform_inline_text_is_optional_under_response_budget() -> None:
+    rows = [{"id": index, "label": "x" * 20} for index in range(20)]
+    result = asyncio.run(
+        data_transform(
+            {
+                "version": "1",
+                "sources": {"rows": {"inline": rows}},
+                "steps": [{"op": "select", "fields": ["id", "label"]}],
+                "limits": {"max_response_bytes": 2048},
+            }
+        )
+    )
+    encoded = canonical_json(
+        result.model_dump(mode="json", by_alias=True, exclude_none=True)
+    ).encode("utf-8")
+
+    assert result.structuredContent["status"] == "ok"
+    assert result.content[0].text == "transform: ok; rows_out=20"
+    assert len(encoded) <= 2048
 
 
 def test_mcp_top_level_contract_validation_runs_inside_the_worker() -> None:

@@ -64,7 +64,9 @@ def json_safe(value: Any) -> Any:
             )
         return value
     if isinstance(value, decimal.Decimal):
-        return str(value)
+        # Fixed-point matches the ingestion boundary: str() switches to
+        # scientific notation below 1e-7, which would not round-trip.
+        return format(value, "f")
     if isinstance(value, (dt.datetime, dt.date, dt.time)):
         return value.isoformat()
     if isinstance(value, bytes):
@@ -77,6 +79,42 @@ def json_safe(value: Any) -> Any:
         return {_require_string_key(key): json_safe(item) for key, item in value.items()}
     if isinstance(value, (list, tuple, set)):
         return [json_safe(item) for item in value]
+    return str(value)
+
+
+def _reject_non_finite(value: float | decimal.Decimal) -> None:
+    finite = value.is_finite() if isinstance(value, decimal.Decimal) else math.isfinite(value)
+    if not finite:
+        raise DataTransformerError(
+            "E_NUMBER_INVALID", "non-finite numbers are not valid structured data"
+        )
+
+
+def validation_safe(value: Any) -> Any:
+    """Materialize a value for JSON Schema checks with exact decimals kept numeric.
+
+    The public envelope encodes decimals as strings, but schema validation
+    must judge the semantic value so file and inline carriers agree.
+    """
+    if value is None or isinstance(value, (str, bool, int)):
+        return value
+    if isinstance(value, (float, decimal.Decimal)):
+        _reject_non_finite(value)
+        return value
+    if isinstance(value, (dt.datetime, dt.date, dt.time)):
+        return value.isoformat()
+    if isinstance(value, bytes):
+        return {"base64": base64.b64encode(value).decode("ascii")}
+    if isinstance(value, Path):
+        return str(value)
+    if dataclasses.is_dataclass(value):
+        return validation_safe(dataclasses.asdict(value))
+    if isinstance(value, dict):
+        return {
+            _require_string_key(key): validation_safe(item) for key, item in value.items()
+        }
+    if isinstance(value, (list, tuple, set)):
+        return [validation_safe(item) for item in value]
     return str(value)
 
 
@@ -97,7 +135,9 @@ def internal_json(value: Any) -> str:
     if isinstance(value, decimal.Decimal):
         if not value.is_finite():
             raise ValueError("non-finite decimal is not valid JSON")
-        return str(value)
+        # Fixed-point: str() emits scientific notation below 1e-7, which the
+        # DuckDB ingestion boundary cannot cast back to DECIMAL.
+        return format(value, "f")
     if isinstance(value, float):
         if not math.isfinite(value):
             raise ValueError("non-finite float is not valid JSON")

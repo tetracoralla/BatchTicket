@@ -8,3 +8,4 @@ dist/
 build/
 .coverage*
 htmlcov/
+probe_users.json

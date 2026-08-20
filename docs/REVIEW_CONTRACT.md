@@ -15,6 +15,7 @@ This contract gives later construction and review Agents a stable way to judge t
 | Side-effect truth | Destination, format, overwrite authority, return policy, and response feasibility are preflighted before publication; dry-run makes the same decision without writing. | A call reports ordinary failure after mutation, or dry-run passes a target the real call must reject. |
 | Receipt integrity | Receipts state observed effects without claiming semantic correctness; fan-in reports each input, matches, unmatched data, fan-out, nulls, loss, and assertions. | Missing measurements are rendered as misleading null/zero values or every output field is reported as newly added. |
 | Installed Agent route | A cold supported prompt selects the intended installed tool within the route budget, executes it, and continues through a bounded result or output reference without generic fallback. | Skill/tool version drift, missing tools, extra discovery calls, retries, or shell/model rewriting of the data. |
+| Schema adaptation | Exact structural evidence and explicit mappings can produce a normal executable Plan v1; ambiguity, incompatibility, unsupported schema composition, and semantic choices remain unresolved. | A fuzzy/synonym guess, implicit cast/default, ambiguous source selection, or plan before required mappings are explicit. |
 | Human route | The real CLI supports inspect, plan execution, dry-run, output continuation, validation/diff, and recovery with stable machine-readable results. | Only direct library tests pass, or a failed action leaves stale or hidden output. |
 
 ## Required adversarial families
@@ -29,6 +30,7 @@ Keep happy-path tests, then add focused negative regression for every repaired i
 - unmatched and many-to-many joins, fan-out, new nulls, dropped rows/fields, and receipt/assertion behavior;
 - empty schema-bearing CSV/Parquet, empty schema-less inputs, inline/file equivalence, and empty diff/transform paths;
 - return-policy and destination failures before publication, followed by the same dry-run and real-run preflight decision.
+- adapter exact/normalized candidates, tied record sets, unselectable paths, unknown mappings, nullable/type mismatch, source duplication, array bounds, and unsupported schema composition.
 
 Exact regressions belong in executable tests. Do not turn this section into a growing narrative inventory of old bugs.
 
@@ -55,6 +57,13 @@ project virtual environment, `uv`, or network access. Introspect the live tool s
 issue ordinary supported prompts, record selected tool/call count/retries/fallbacks, and
 execute happy, ambiguity, invalid, resource-boundary, large-result/reference,
 timeout/recovery, and side-effect-preflight sequences.
+
+Record workspace-root grant and approval policy separately from routing. A host that does
+not grant MCP roots must receive one explicit `ADT_WORKSPACE_ROOT` compatibility grant.
+Because `data_transform` can write when `output.path` is present, a host may require
+approval for the tool as a whole even for an inline-only call. `approval=never` is valid
+evidence for read-only routing and for the authorization boundary, but it cannot establish
+successful transform execution. Never count shell/jq/model fallback as a plugin pass.
 
 Direct Python calls or a repo-root stdio test do not establish installed-host activation or relative workspace behavior.
 

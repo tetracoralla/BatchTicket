@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import copy
 import decimal
-from collections.abc import Mapping
+from collections.abc import Iterator, Mapping
 from typing import Any
 
 import duckdb
@@ -10,6 +10,7 @@ import duckdb
 from .dataset import DataSet
 from .errors import DataTransformerError
 from .expressions import compile_condition, compile_expression
+from .json_values import validation_safe
 from .limits import Limits
 from .selectors import parse_selector
 from .workspace import INTERNAL_ORDER, Workspace, field_expression, quote_identifier
@@ -449,6 +450,7 @@ class OperationExecutor:
         field = step.get("field")
         if not isinstance(field, str) or field not in self._columns(source):
             raise DataTransformerError("E_FIELD_NOT_FOUND", "explode field does not exist")
+        dropped = self._dropped_explode_rows(source, field)
         columns = [column for column in self._columns(source) if column != field]
         inner_columns = [quote_identifier(column) for column in columns]
         inner_columns.append(f"unnest({quote_identifier(field)}) AS {quote_identifier(field)}")
@@ -460,7 +462,25 @@ class OperationExecutor:
             f"SELECT {outer_columns}, row_number() OVER (ORDER BY {order}) - 1 AS {order} FROM ("
             f"SELECT {', '.join(inner_columns)} FROM {self._table(source)})"
         )
-        return self._query_dataset(source, step_id, query)
+        result = self._query_dataset(source, step_id, query)
+        if dropped:
+            result.warnings.append(
+                {"code": "W_EXPLODE_EMPTY", "field": field, "dropped_rows": dropped}
+            )
+        return result
+
+    def _dropped_explode_rows(self, source: DataSet, field: str) -> int:
+        # unnest removes rows whose array cell is null or empty; report the
+        # drop instead of letting it vanish from the receipt.
+        try:
+            row = self.workspace.connection.execute(
+                f"SELECT count(*) FROM {self._table(source)} "
+                f"WHERE {quote_identifier(field)} IS NULL "
+                f"OR len({quote_identifier(field)}) = 0"
+            ).fetchone()
+        except duckdb.Error:
+            return 0
+        return int(row[0]) if row else 0
 
     def _join(self, step: dict[str, Any], datasets: Mapping[str, DataSet], step_id: str) -> DataSet:
         left = self._referenced_dataset(step.get("left"), datasets, "left")
@@ -731,16 +751,27 @@ class OperationExecutor:
             _escape_path_part(field, separator): data_type
             for field, data_type in source_schema.items()
         }
-        rows = (_flatten_mapping(row, separator) for row in self.workspace.iter_rows(source))
+
+        flattened_fields: set[str] = set()
+
+        def flattened_rows() -> Iterator[dict[str, Any]]:
+            for row in self.workspace.iter_rows(source, safe=validation_safe):
+                flattened = _flatten_mapping(row, separator)
+                self.workspace.check_structure(flattened, step_id)
+                flattened_fields.update(flattened)
+                yield flattened
+
         source_is_empty = self.workspace.row_count(source.table_name or "") == 0
         result = self.workspace.table_from_rows(
-            rows,
+            flattened_rows(),
             step_id,
             source.source_format,
             source.byte_size,
             self.limits,
             empty_schema=empty_schema if source_is_empty else None,
+            structure_checked=True,
         )
+        result.warnings.extend(_flatten_collision_warnings(flattened_fields, separator))
         if source_is_empty:
             result.effects["flatten_original_schema"] = source_schema
         return result
@@ -756,17 +787,23 @@ class OperationExecutor:
             raise DataTransformerError(
                 "E_STEP_INVALID", "unflatten separator must be 1 to 4 characters"
             )
-        rows = (_unflatten_mapping(row, separator) for row in self.workspace.iter_rows(source))
+        def unflattened_rows() -> Iterator[dict[str, Any]]:
+            for row in self.workspace.iter_rows(source, safe=validation_safe):
+                unflattened = _unflatten_mapping(row, separator)
+                self.workspace.check_structure(unflattened, step_id)
+                yield unflattened
+
         original_schema = source.effects.get("flatten_original_schema")
         empty_schema = original_schema if isinstance(original_schema, dict) else None
         source_is_empty = self.workspace.row_count(source.table_name or "") == 0
         return self.workspace.table_from_rows(
-            rows,
+            unflattened_rows(),
             step_id,
             source.source_format,
             source.byte_size,
             self.limits,
             empty_schema=empty_schema if source_is_empty else None,
+            structure_checked=True,
         )
 
     def _tree_operation(
@@ -774,6 +811,7 @@ class OperationExecutor:
     ) -> DataSet:
         value = copy.deepcopy(source.value)
         before = _tree_inventory(value)
+        flatten_warnings: list[dict[str, Any]] = []
         if operation == "set":
             path = self._tree_path(step.get("path"))
             value = _tree_set(
@@ -796,7 +834,9 @@ class OperationExecutor:
             if not isinstance(value, dict):
                 raise DataTransformerError("E_TYPE_MISMATCH", "flatten requires an object")
             separator = step.get("separator", "_")
-            value = _flatten_mapping(value, separator)
+            flattened = _flatten_mapping(value, separator)
+            flatten_warnings = _flatten_collision_warnings(flattened, separator)
+            value = flattened
         elif operation == "unflatten":
             if not isinstance(value, dict):
                 raise DataTransformerError("E_TYPE_MISMATCH", "unflatten requires an object")
@@ -808,10 +848,12 @@ class OperationExecutor:
                 "operation is not supported for tree data",
                 {"operation": operation},
             )
+        self.workspace.check_structure(value, step_id)
         after = _tree_inventory(value)
         changes = _tree_changes(before, after)
         result = DataSet("tree", step_id, source.source_format, source.byte_size, value=value)
         result.effects["tree_changes"] = changes
+        result.warnings.extend(flatten_warnings)
         if changes["paths_removed"]:
             result.warnings.append(
                 {"code": "W_TREE_PATHS_REMOVED", "count": len(changes["paths_removed"])}
@@ -997,6 +1039,33 @@ def _flatten_mapping(
                 raise DataTransformerError("E_FIELD_COLLISION", "flatten creates a duplicate field")
             result[path] = item
     return result
+
+
+def _flatten_collision_warnings(
+    flattened_fields: Mapping[str, Any] | set[str], separator: str
+) -> list[dict[str, Any]]:
+    # Group escaped output fields by the name they would have had without
+    # escaping. This finds collisions at every nesting level, not only between
+    # a top-level field and one nested path.
+    candidates: dict[str, list[str]] = {}
+    for escaped in flattened_fields:
+        unescaped = separator.join(_split_escaped_path(escaped, separator))
+        candidates.setdefault(unescaped, []).append(escaped)
+
+    warnings: list[dict[str, Any]] = []
+    for original, escaped_fields in sorted(candidates.items()):
+        if len(escaped_fields) < 2:
+            continue
+        for escaped in sorted(escaped_fields):
+            if escaped != original:
+                warnings.append(
+                    {
+                        "code": "W_FLATTEN_COLLISION",
+                        "field": original,
+                        "renamed_to": escaped,
+                    }
+                )
+    return warnings
 
 
 def _literal_type(value: Any) -> str:

@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 import csv
+import dataclasses
 import decimal
 import re
 import tempfile
 import threading
-from collections.abc import Iterable, Iterator
+from collections.abc import Callable, Iterable, Iterator
 from pathlib import Path
 from typing import Any
 
@@ -20,6 +21,43 @@ from .selectors import select_value
 
 INTERNAL_ORDER = "__adt_internal_order__"
 _SAFE_NAME = re.compile(r"[^A-Za-z0-9_]")
+_NESTED_TYPE_BASES = {"STRUCT", "LIST", "MAP", "JSON", "UNION"}
+_INT64_MIN = -(2**63)
+_INT64_MAX = 2**63 - 1
+SHAPE_FIELD_CAP = 1_000
+_QUALITY_COLUMN_CHUNK = 64
+_TREE_SAMPLE_FIELD_CAP = 50
+_TREE_SAMPLE_DEPTH_CAP = 8
+_RECORD_SET_CAP = 32
+_SELECTOR_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_-]*$")
+
+
+@dataclasses.dataclass
+class _JsonType:
+    kind: str
+    minimum_integer: int | None = None
+    maximum_integer: int | None = None
+    integer_digits: int = 0
+    scale: int = 0
+    fields: dict[str, _JsonType | None] = dataclasses.field(default_factory=dict)
+    element: _JsonType | None = None
+
+
+def bound_shape(shape: dict[str, Any]) -> dict[str, Any]:
+    """Bound the field listing inside a public shape description.
+
+    Totals stay exact; only the per-field listing is capped so a wide record
+    cannot flood the response envelope.
+    """
+    fields = shape.get("fields")
+    if not isinstance(fields, dict) or len(fields) <= SHAPE_FIELD_CAP:
+        return shape
+    bounded = {**shape}
+    bounded["fields"] = dict(list(fields.items())[:SHAPE_FIELD_CAP])
+    bounded["fields_truncated"] = True
+    if "field_count" not in bounded:
+        bounded["field_count"] = len(fields)
+    return bounded
 
 
 def quote_identifier(name: str) -> str:
@@ -99,7 +137,7 @@ class Workspace:
         *,
         resource_root: Path | None = None,
         restricted_paths: bool = False,
-    ) -> None:
+    ) -> int:
         self.limits = limits or Limits()
         self.resource_root = resource_root.resolve() if resource_root is not None else None
         self.restricted_paths = restricted_paths
@@ -248,7 +286,9 @@ class Workspace:
             rows = [value]
         else:
             rows = [{"value": value}]
-        return self.table_from_rows(rows, name, data_format, byte_size, limits)
+        return self.table_from_rows(
+            rows, name, data_format, byte_size, limits, structure_checked=True
+        )
 
     def table_from_rows(
         self,
@@ -258,12 +298,12 @@ class Workspace:
         byte_size: int,
         limits: Limits,
         empty_schema: dict[str, str] | None = None,
+        structure_checked: bool = False,
     ) -> DataSet:
         table_name = self.next_table_name(name)
         temp_path = Path(self._temporary.name) / f"{table_name}.jsonl"
         row_count = 0
-        exact_decimals: dict[str, list[tuple[int, decimal.Decimal]]] = {}
-        numeric_kinds: dict[str, set[str]] = {}
+        column_types: dict[str, _JsonType | None] = {}
         encoded_bytes = 0
         try:
             with temp_path.open("w", encoding="utf-8", newline="\n") as handle:
@@ -277,15 +317,10 @@ class Workspace:
                         )
                     normalized = row if isinstance(row, dict) else {"value": row}
                     for field, value in normalized.items():
-                        if isinstance(value, decimal.Decimal):
-                            exact_decimals.setdefault(str(field), []).append(
-                                (row_count - 1, value)
-                            )
-                            numeric_kinds.setdefault(str(field), set()).add("decimal")
-                        elif isinstance(value, float):
-                            numeric_kinds.setdefault(str(field), set()).add("float")
-                        elif isinstance(value, int) and not isinstance(value, bool):
-                            numeric_kinds.setdefault(str(field), set()).add("integer")
+                        key = str(field)
+                        column_types[key] = _merge_json_type(
+                            column_types.get(key), _infer_json_type(value, key), key
+                        )
                     encoded = internal_json(normalized)
                     encoded_bytes += len(encoded.encode("utf-8")) + 1
                     if encoded_bytes > limits.max_temp_bytes:
@@ -296,6 +331,9 @@ class Workspace:
                         )
                     handle.write(encoded)
                     handle.write("\n")
+        except DataTransformerError:
+            temp_path.unlink(missing_ok=True)
+            raise
         except (OSError, ValueError) as exc:
             temp_path.unlink(missing_ok=True)
             raise DataTransformerError("E_PARSE", "could not encode tabular input") from exc
@@ -310,18 +348,32 @@ class Workspace:
             )
             temp_path.unlink(missing_ok=True)
             return DataSet("table", name, data_format, byte_size, table_name=table_name)
+        has_exact_decimal = any(
+            _json_type_has_decimal(data_type) for data_type in column_types.values()
+        )
+        explicit_types = {
+            field: _json_type_sql(data_type, field)
+            for field, data_type in column_types.items()
+        }
+        if has_exact_decimal:
+            _quote_decimal_values(temp_path, limits)
+        columns_sql = ", ".join(
+            f"'{field.replace(chr(39), chr(39) * 2)}': "
+            f"'{data_type.replace(chr(39), chr(39) * 2)}'"
+            for field, data_type in explicit_types.items()
+        )
+        reader = f"read_json(?, format='newline_delimited', columns={{{columns_sql}}})"
         try:
             return self._create_table_from_reader(
                 name,
                 data_format,
                 byte_size,
                 table_name,
-                "read_json_auto(?, format='newline_delimited')",
+                reader,
                 [str(temp_path)],
                 limits,
-                exact_decimals=exact_decimals,
-                numeric_kinds=numeric_kinds,
-                declared_schema=empty_schema,
+                declared_schema=None,
+                structure_checked=structure_checked,
             )
         finally:
             temp_path.unlink(missing_ok=True)
@@ -376,7 +428,9 @@ class Workspace:
                     "E_IO", "could not read JSONL source", {"source": name}
                 ) from exc
 
-        return self.table_from_rows(rows(), name, "jsonl", byte_size, limits)
+        return self.table_from_rows(
+            rows(), name, "jsonl", byte_size, limits, structure_checked=True
+        )
 
     def _load_delimited_path(
         self,
@@ -398,6 +452,12 @@ class Workspace:
                         "E_DUPLICATE_FIELD",
                         "delimited input requires unique non-empty headers",
                         {"headers": header},
+                    )
+                if len(header) > limits.max_items:
+                    raise DataTransformerError(
+                        "E_ITEM_LIMIT",
+                        "delimited header exceeds the structural item limit",
+                        {"columns": len(header), "maximum": limits.max_items},
                     )
                 raw_rows: list[list[str | None]] = []
                 for row_number, row in enumerate(reader, start=2):
@@ -446,9 +506,8 @@ class Workspace:
         parameters: list[Any],
         limits: Limits,
         *,
-        exact_decimals: dict[str, list[tuple[int, decimal.Decimal]]] | None = None,
-        numeric_kinds: dict[str, set[str]] | None = None,
         declared_schema: dict[str, str] | None = None,
+        structure_checked: bool = False,
     ) -> DataSet:
         raw_name = f"{table_name}_raw"
         try:
@@ -482,11 +541,6 @@ class Workspace:
                     f"FROM {quote_identifier(raw_name)}"
                 )
             self._apply_declared_schema(table_name, declared_schema or {})
-            self._restore_exact_decimals(
-                table_name,
-                exact_decimals or {},
-                numeric_kinds or {},
-            )
             self.connection.execute(f"DROP TABLE {quote_identifier(raw_name)}")
         except DataTransformerError:
             self.connection.execute(f"DROP TABLE IF EXISTS {quote_identifier(raw_name)}")
@@ -496,6 +550,9 @@ class Workspace:
             raise DataTransformerError(
                 "E_PARSE", "could not parse tabular source", {"source": name, "format": data_format}
             ) from exc
+        if not structure_checked:
+            self._enforce_loaded_structure(table_name, name, limits)
+        self.check_temp_budget()
         return DataSet("table", name, data_format, byte_size, table_name=table_name)
 
     def _apply_declared_schema(self, table_name: str, schema: dict[str, str]) -> None:
@@ -505,48 +562,53 @@ class Workspace:
                 f"ALTER TABLE {table} ALTER {quote_identifier(field)} TYPE {data_type}"
             )
 
-    def _restore_exact_decimals(
-        self,
-        table_name: str,
-        exact_decimals: dict[str, list[tuple[int, decimal.Decimal]]],
-        numeric_kinds: dict[str, set[str]],
+    def _enforce_loaded_structure(
+        self, table_name: str, name: str, limits: Limits
     ) -> None:
-        for field, cells in exact_decimals.items():
-            if "float" in numeric_kinds.get(field, set()):
+        """Charge the structural item/depth budget once for a loaded table.
+
+        Rows that were already structure-checked by the producing layer pass
+        ``structure_checked`` and skip this entirely. Columns that can hold
+        containers are walked once in Python; scalar tables are accounted
+        analytically without materializing rows.
+        """
+        types = self.column_types(table_name)
+        rows = self.row_count(table_name)
+        if not rows:
+            if len(types) > limits.max_items:
                 raise DataTransformerError(
-                    "E_TYPE_MISMATCH",
-                    "a field cannot mix exact decimals with binary floating-point values",
-                    {"field": field},
+                    "E_ITEM_LIMIT",
+                    "schema-bearing source exceeds the structural item limit",
+                    {
+                        "source": name,
+                        "items": len(types),
+                        "maximum": limits.max_items,
+                    },
                 )
-            precision = 1
-            scale = 0
-            for _, value in cells:
-                sign, digits, exponent = value.as_tuple()
-                del sign
-                value_scale = max(-exponent, 0)
-                integer_digits = max(len(digits) + exponent, 0)
-                precision = max(precision, integer_digits + value_scale)
-                scale = max(scale, value_scale)
-            for kind in numeric_kinds.get(field, set()):
-                if kind == "integer":
-                    precision = max(precision, 19 + scale)
-            if precision > 38 or scale > 38:
-                raise DataTransformerError(
-                    "E_NUMBER_PRECISION",
-                    "exact decimal exceeds the runtime precision limit",
-                    {"field": field, "precision": precision, "scale": scale, "maximum": 38},
-                )
-            column = quote_identifier(field)
-            table = quote_identifier(table_name)
-            self.connection.execute(
-                f"ALTER TABLE {table} ALTER {column} TYPE DECIMAL({precision}, {scale})"
+            return
+        nested = any(
+            data_type.upper().split("(", 1)[0].strip() in _NESTED_TYPE_BASES
+            or "[]" in data_type
+            for data_type in types.values()
+        )
+        if nested:
+            dataset = DataSet("table", name, "", 0, table_name=table_name)
+            for row in self.iter_rows(dataset):
+                self._check_structure(row, name, limits)
+            return
+        if limits.max_depth < 2:
+            raise DataTransformerError(
+                "E_DEPTH_LIMIT",
+                "source exceeds nesting depth limit",
+                {"source": name, "maximum": limits.max_depth},
             )
-            for order, value in cells:
-                self.connection.execute(
-                    f"UPDATE {table} SET {column} = ? "
-                    f"WHERE {quote_identifier(INTERNAL_ORDER)} = ?",
-                    [value, order],
-                )
+        self._consumed_items += rows * (len(types) + 1)
+        if self._consumed_items > limits.max_items:
+            raise DataTransformerError(
+                "E_ITEM_LIMIT",
+                "combined sources exceed the cumulative structural item limit",
+                {"source": name, "maximum": limits.max_items},
+            )
 
     def columns(self, table_name: str, include_internal: bool = False) -> list[str]:
         rows = self.connection.execute(
@@ -616,7 +678,12 @@ class Workspace:
         return list(self.iter_rows(dataset, limit=limit))
 
     def iter_rows(
-        self, dataset: DataSet, limit: int | None = None, batch_size: int = 1000
+        self,
+        dataset: DataSet,
+        limit: int | None = None,
+        batch_size: int = 1000,
+        *,
+        safe: Callable[[Any], Any] = json_safe,
     ) -> Iterator[dict[str, Any]]:
         if not dataset.is_table or dataset.table_name is None:
             raise DataTransformerError("E_TYPE_MISMATCH", "operation requires a table")
@@ -640,7 +707,7 @@ class Workspace:
                     yield {}
                 else:
                     yield {
-                        column: json_safe(value)
+                        column: safe(value)
                         for column, value in zip(columns, record, strict=True)
                     }
 
@@ -667,14 +734,24 @@ class Workspace:
         row_count = self.row_count(dataset.table_name)
         fields: dict[str, Any] = {column: {"type": types[column].lower()} for column in columns}
         if columns and include_quality:
-            null_sql = ", ".join(
-                f"count(*) FILTER (WHERE {quote_identifier(column)} IS NULL)" for column in columns
-            )
-            null_counts = self.connection.execute(
-                f"SELECT {null_sql} FROM {quote_identifier(dataset.table_name)}"
-            ).fetchone()
-            for column, null_count in zip(columns, null_counts, strict=True):
-                fields[column].update({"nullable": bool(null_count), "null_count": int(null_count)})
+            # One aggregate per column in a single query makes DuckDB allocate
+            # per-aggregate state that explodes on wide tables, so null counts
+            # are collected in bounded column chunks.
+            null_counts: dict[str, int] = {}
+            for start in range(0, len(columns), _QUALITY_COLUMN_CHUNK):
+                chunk = columns[start : start + _QUALITY_COLUMN_CHUNK]
+                null_sql = ", ".join(
+                    f"count(*) FILTER (WHERE {quote_identifier(column)} IS NULL)"
+                    for column in chunk
+                )
+                counts = self.connection.execute(
+                    f"SELECT {null_sql} FROM {quote_identifier(dataset.table_name)}"
+                ).fetchone()
+                null_counts.update(zip(chunk, counts, strict=True))
+            for column, null_count in null_counts.items():
+                fields[column].update(
+                    {"nullable": bool(null_count), "null_count": int(null_count)}
+                )
         result: dict[str, Any] = {
             "kind": "table",
             "rows": row_count,
@@ -699,13 +776,18 @@ class Workspace:
                 for key, item in value.items()
             }
             result["field_count"] = len(value)
+            record_sets, record_sets_truncated = _discover_record_sets(value)
+            if record_sets:
+                result["record_sets"] = record_sets
+            if record_sets_truncated:
+                result["record_sets_truncated"] = True
         elif isinstance(value, list):
             result["items"] = len(value)
         if sample_rows:
-            if isinstance(value, list):
-                result["sample"] = json_safe(value[:sample_rows])
-            else:
-                result["sample"] = json_safe(value)
+            sample, sample_truncated = _bounded_tree_sample(value, sample_rows)
+            result["sample"] = sample
+            if sample_truncated:
+                result["sample_truncated"] = True
         return result
 
     def _check_bytes(self, byte_size: int, source: str, limits: Limits) -> None:
@@ -716,18 +798,32 @@ class Workspace:
                 {"source": source, "bytes": byte_size, "maximum": limits.max_input_bytes},
             )
 
-    def _check_structure(self, value: Any, source: str, limits: Limits) -> None:
+    def _check_structure(
+        self,
+        value: Any,
+        source: str,
+        limits: Limits,
+        *,
+        charge_source_budget: bool = True,
+    ) -> None:
         pending: list[tuple[Any, int]] = [(value, 1)]
         containers: set[int] = set()
         items = 0
         while pending:
             current, depth = pending.pop()
             items += 1
-            self._consumed_items += 1
-            if self._consumed_items > limits.max_items:
+            if charge_source_budget:
+                self._consumed_items += 1
+                if self._consumed_items > limits.max_items:
+                    raise DataTransformerError(
+                        "E_ITEM_LIMIT",
+                        "combined sources exceed the cumulative structural item limit",
+                        {"source": source, "maximum": limits.max_items},
+                    )
+            elif items > limits.max_items:
                 raise DataTransformerError(
                     "E_ITEM_LIMIT",
-                    "combined sources exceed the cumulative structural item limit",
+                    "generated output exceeds the structural item limit",
                     {"source": source, "maximum": limits.max_items},
                 )
             if depth > limits.max_depth:
@@ -759,13 +855,72 @@ class Workspace:
                     )
                 containers.add(identity)
                 pending.extend((item, depth + 1) for item in current)
+        return items
+
+    def check_structure(self, value: Any, label: str) -> None:
+        self._check_structure(
+            value, label, self.limits, charge_source_budget=False
+        )
 
     def check_dataset_structure(self, dataset: DataSet, label: str) -> None:
+        """Enforce the structural limit on one generated step result.
+
+        Source structures are charged cumulatively when they are loaded. Step
+        results are checked independently so shape-preserving operations do not
+        spend the same budget repeatedly, while fan-out still cannot create a
+        result larger than ``max_items``.
+        """
         if dataset.is_tree:
-            self._check_structure(dataset.value, label, self.limits)
+            self.check_structure(dataset.value, label)
             return
+        if dataset.table_name is None:
+            raise DataTransformerError("E_INTERNAL", "table has no backing relation")
+
+        types = self.column_types(dataset.table_name)
+        rows = self.row_count(dataset.table_name)
+        nested = any(
+            data_type.upper().split("(", 1)[0].strip() in _NESTED_TYPE_BASES
+            or "[]" in data_type
+            for data_type in types.values()
+        )
+        if not nested:
+            if rows and self.limits.max_depth < 2:
+                raise DataTransformerError(
+                    "E_DEPTH_LIMIT",
+                    "generated output exceeds the nesting depth limit",
+                    {"source": label, "maximum": self.limits.max_depth},
+                )
+            items = rows * (len(types) + 1) if rows else len(types)
+            if items > self.limits.max_items:
+                raise DataTransformerError(
+                    "E_ITEM_LIMIT",
+                    "generated output exceeds the structural item limit",
+                    {
+                        "source": label,
+                        "items": items,
+                        "maximum": self.limits.max_items,
+                    },
+                )
+            return
+
+        items = 0
         for row in self.iter_rows(dataset):
-            self._check_structure(row, label, self.limits)
+            items += self._check_structure(
+                row,
+                label,
+                self.limits,
+                charge_source_budget=False,
+            )
+            if items > self.limits.max_items:
+                raise DataTransformerError(
+                    "E_ITEM_LIMIT",
+                    "generated output exceeds the structural item limit",
+                    {
+                        "source": label,
+                        "items": items,
+                        "maximum": self.limits.max_items,
+                    },
+                )
 
     def check_temp_budget(self, extra_paths: Iterable[Path] = ()) -> None:
         paths = [path for path in Path(self._temporary.name).rglob("*") if path.is_file()]
@@ -782,6 +937,205 @@ class Workspace:
                 "data operation exceeded the cumulative temporary-storage limit",
                 {"bytes": total, "maximum": self.limits.max_temp_bytes},
             )
+
+
+def _infer_json_type(value: Any, path: str) -> _JsonType | None:
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        return _JsonType("boolean")
+    if isinstance(value, int):
+        digits = len(str(abs(value))) if value else 1
+        return _JsonType(
+            "integer",
+            minimum_integer=value,
+            maximum_integer=value,
+            integer_digits=digits,
+        )
+    if isinstance(value, decimal.Decimal):
+        if not value.is_finite():
+            raise DataTransformerError(
+                "E_NUMBER_INVALID", "non-finite numbers are not valid structured data"
+            )
+        _, digits, exponent = value.as_tuple()
+        scale = max(-exponent, 0)
+        integer_digits = max(len(digits) + exponent, 0)
+        return _JsonType("decimal", integer_digits=integer_digits, scale=scale)
+    if isinstance(value, float):
+        return _JsonType("float")
+    if isinstance(value, str):
+        return _JsonType("string")
+    if isinstance(value, dict):
+        return _JsonType(
+            "object",
+            fields={
+                str(field): _infer_json_type(item, f"{path}.{field}")
+                for field, item in value.items()
+            },
+        )
+    if isinstance(value, (list, tuple)):
+        element: _JsonType | None = None
+        for index, item in enumerate(value):
+            element = _merge_json_type(
+                element, _infer_json_type(item, f"{path}[{index}]"), f"{path}[]"
+            )
+        return _JsonType("array", element=element)
+    return _infer_json_type(json_safe(value), path)
+
+
+def _merge_json_type(
+    left: _JsonType | None, right: _JsonType | None, path: str
+) -> _JsonType | None:
+    if left is None:
+        return right
+    if right is None:
+        return left
+    if left.kind == right.kind:
+        if left.kind == "integer":
+            return _JsonType(
+                "integer",
+                minimum_integer=min(left.minimum_integer or 0, right.minimum_integer or 0),
+                maximum_integer=max(left.maximum_integer or 0, right.maximum_integer or 0),
+                integer_digits=max(left.integer_digits, right.integer_digits),
+            )
+        if left.kind == "decimal":
+            return _JsonType(
+                "decimal",
+                integer_digits=max(left.integer_digits, right.integer_digits),
+                scale=max(left.scale, right.scale),
+            )
+        if left.kind == "object":
+            fields = dict(left.fields)
+            for field, data_type in right.fields.items():
+                fields[field] = _merge_json_type(
+                    fields.get(field), data_type, f"{path}.{field}"
+                )
+            return _JsonType("object", fields=fields)
+        if left.kind == "array":
+            return _JsonType(
+                "array",
+                element=_merge_json_type(left.element, right.element, f"{path}[]"),
+            )
+        return left
+    if {left.kind, right.kind} == {"integer", "decimal"}:
+        integer = left if left.kind == "integer" else right
+        exact = left if left.kind == "decimal" else right
+        return _JsonType(
+            "decimal",
+            integer_digits=max(integer.integer_digits, exact.integer_digits),
+            scale=exact.scale,
+        )
+    raise DataTransformerError(
+        "E_TYPE_MISMATCH",
+        "tabular fields cannot mix incompatible value types; use tree data or cast explicitly",
+        {"field": path, "left_type": left.kind, "right_type": right.kind},
+    )
+
+
+def _json_type_has_decimal(data_type: _JsonType | None) -> bool:
+    if data_type is None:
+        return False
+    if data_type.kind == "decimal":
+        return True
+    if data_type.kind == "object":
+        return any(_json_type_has_decimal(item) for item in data_type.fields.values())
+    if data_type.kind == "array":
+        return _json_type_has_decimal(data_type.element)
+    return False
+
+
+def _json_type_sql(data_type: _JsonType | None, path: str) -> str:
+    if data_type is None:
+        return "VARCHAR"
+    if data_type.kind == "boolean":
+        return "BOOLEAN"
+    if data_type.kind == "string":
+        return "VARCHAR"
+    if data_type.kind == "float":
+        return "DOUBLE"
+    if data_type.kind == "integer":
+        if (
+            data_type.minimum_integer is not None
+            and data_type.maximum_integer is not None
+            and _INT64_MIN <= data_type.minimum_integer <= data_type.maximum_integer <= _INT64_MAX
+        ):
+            return "BIGINT"
+        precision = data_type.integer_digits
+        if precision > 38:
+            raise DataTransformerError(
+                "E_NUMBER_PRECISION",
+                "exact integer exceeds the runtime precision limit",
+                {"field": path, "precision": precision, "maximum": 38},
+            )
+        return f"DECIMAL({precision},0)"
+    if data_type.kind == "decimal":
+        precision = data_type.integer_digits + data_type.scale
+        if precision > 38 or data_type.scale > 38:
+            raise DataTransformerError(
+                "E_NUMBER_PRECISION",
+                "exact decimal exceeds the runtime precision limit",
+                {
+                    "field": path,
+                    "precision": precision,
+                    "scale": data_type.scale,
+                    "maximum": 38,
+                },
+            )
+        return f"DECIMAL({precision},{data_type.scale})"
+    if data_type.kind == "object":
+        if not data_type.fields:
+            return "MAP(VARCHAR, JSON)"
+        fields = ", ".join(
+            f"{quote_identifier(field)} {_json_type_sql(item, f'{path}.{field}')}"
+            for field, item in data_type.fields.items()
+        )
+        return f"STRUCT({fields})"
+    if data_type.kind == "array":
+        return f"{_json_type_sql(data_type.element, f'{path}[]')}[]"
+    raise DataTransformerError(
+        "E_TYPE_MISMATCH", "tabular field has an unsupported value type", {"field": path}
+    )
+
+
+def _stringify_decimals(value: Any) -> Any:
+    if isinstance(value, decimal.Decimal):
+        # Fixed-point keeps sub-1e-7 magnitudes castable to DECIMAL; str() would
+        # emit scientific notation the ingestion boundary rejects.
+        return format(value, "f")
+    if isinstance(value, dict):
+        return {field: _stringify_decimals(item) for field, item in value.items()}
+    if isinstance(value, list):
+        return [_stringify_decimals(item) for item in value]
+    return value
+
+
+def _quote_decimal_values(path: Path, limits: Limits) -> None:
+    """Quote every JSON decimal before explicit nested DECIMAL ingestion."""
+    rewritten = path.with_name(path.name + ".quoted")
+    try:
+        total = path.stat().st_size
+        with (
+            path.open("r", encoding="utf-8") as source,
+            rewritten.open("w", encoding="utf-8", newline="\n") as target,
+        ):
+            for line in source:
+                encoded = internal_json(_stringify_decimals(parse_json(line, str(path))))
+                total += len(encoded.encode("utf-8")) + 1
+                if total > limits.max_temp_bytes:
+                    raise DataTransformerError(
+                        "E_TEMP_LIMIT",
+                        "data operation exceeded the cumulative temporary-storage limit",
+                        {"bytes": total, "maximum": limits.max_temp_bytes},
+                    )
+                target.write(encoded)
+                target.write("\n")
+        rewritten.replace(path)
+    except DataTransformerError:
+        rewritten.unlink(missing_ok=True)
+        raise
+    except (OSError, ValueError) as exc:
+        rewritten.unlink(missing_ok=True)
+        raise DataTransformerError("E_PARSE", "could not encode tabular input") from exc
 
 
 class _DelimitedConverter:
@@ -809,7 +1163,11 @@ class _DelimitedConverter:
 def _delimited_converter(values: Iterable[str | None]) -> _DelimitedConverter:
     present = [value for value in values if value not in {None, ""}]
     if present and all(re.fullmatch(r"[+-]?(?:0|[1-9][0-9]*)", value) for value in present):
-        return _DelimitedConverter("integer")
+        # Deterministic inference: integers that overflow BIGINT keep their
+        # exact digits through the decimal path instead of failing the cast.
+        if all(_INT64_MIN <= int(value) <= _INT64_MAX for value in present):
+            return _DelimitedConverter("integer")
+        return _DelimitedConverter("decimal")
     if present and all(
         re.fullmatch(
             r"[+-]?(?:(?:0|[1-9][0-9]*)\.[0-9]+|"
@@ -830,6 +1188,139 @@ def _decode_delimited_value(value: str) -> str | None:
     if value.startswith("\\\\"):
         return value[1:]
     return value
+
+
+def _bounded_tree_sample(value: Any, item_limit: int) -> tuple[Any, bool]:
+    def visit(current: Any, depth: int) -> tuple[Any, bool]:
+        if isinstance(current, list):
+            if depth >= _TREE_SAMPLE_DEPTH_CAP:
+                return [], bool(current)
+            selected = current[:item_limit]
+            values: list[Any] = []
+            truncated = len(current) > len(selected)
+            for item in selected:
+                preview, child_truncated = visit(item, depth + 1)
+                values.append(preview)
+                truncated = truncated or child_truncated
+            return values, truncated
+        if isinstance(current, dict):
+            if depth >= _TREE_SAMPLE_DEPTH_CAP:
+                return {}, bool(current)
+            field_limit = item_limit if depth == 0 else _TREE_SAMPLE_FIELD_CAP
+            selected = list(current.items())[:field_limit]
+            values: dict[str, Any] = {}
+            truncated = len(current) > len(selected)
+            for key, item in selected:
+                preview, child_truncated = visit(item, depth + 1)
+                values[str(key)] = preview
+                truncated = truncated or child_truncated
+            return values, truncated
+        return json_safe(current), False
+
+    return visit(value, 0)
+
+
+def _discover_record_sets(value: dict[str, Any]) -> tuple[list[dict[str, Any]], bool]:
+    candidates: list[dict[str, Any]] = []
+    truncated = False
+
+    def walk(current: dict[str, Any], segments: list[str]) -> None:
+        nonlocal truncated
+        for key in sorted(current):
+            item = current[key]
+            path = [*segments, key]
+            if isinstance(item, list) and all(isinstance(row, dict) for row in item):
+                if len(candidates) >= _RECORD_SET_CAP:
+                    truncated = True
+                    continue
+                candidates.append(_record_set_profile(item, path))
+            elif isinstance(item, dict):
+                walk(item, path)
+
+    walk(value, [])
+    return candidates, truncated
+
+
+def _record_set_profile(rows: list[dict[str, Any]], segments: list[str]) -> dict[str, Any]:
+    names = sorted({str(field) for row in rows for field in row})
+    fields: dict[str, Any] = {}
+    field_budget = [0]
+    for name in names:
+        if field_budget[0] >= SHAPE_FIELD_CAP:
+            break
+        field_budget[0] += 1
+        present = [row[name] for row in rows if name in row]
+        fields[name] = _tree_field_profile(present, len(rows), 1, field_budget)
+    selectable = all(_SELECTOR_NAME.fullmatch(segment) for segment in segments)
+    result: dict[str, Any] = {
+        "path": "/" + "/".join(_json_pointer_segment(segment) for segment in segments),
+        "select": ".".join(segments) + "[*]" if selectable else None,
+        "selectable": selectable,
+        "rows": len(rows),
+        "columns": len(names),
+        "fields": fields,
+    }
+    if len(names) > SHAPE_FIELD_CAP:
+        result["fields_truncated"] = True
+    return result
+
+
+def _tree_field_profile(
+    present: list[Any],
+    total: int,
+    depth: int,
+    field_budget: list[int],
+) -> dict[str, Any]:
+    types = sorted({_tree_type(item) for item in present})
+    profile: dict[str, Any] = {
+        "type": types[0] if len(types) == 1 else "mixed",
+        "nullable": len(present) < total or any(item is None for item in present),
+    }
+    if len(types) > 1:
+        profile["types"] = types
+    missing = total - len(present)
+    if missing:
+        profile["missing_count"] = missing
+    null_count = sum(item is None for item in present)
+    if null_count:
+        profile["null_count"] = null_count
+    non_null = [item for item in present if item is not None]
+    non_null_types = {_tree_type(item) for item in non_null}
+    if depth >= _TREE_SAMPLE_DEPTH_CAP:
+        if any(isinstance(item, (dict, list)) for item in non_null):
+            profile["nested_truncated"] = True
+        return profile
+    if non_null_types == {"object"}:
+        objects = [item for item in non_null if isinstance(item, dict)]
+        names = sorted({str(field) for item in objects for field in item})
+        nested: dict[str, Any] = {}
+        for name in names:
+            if field_budget[0] >= SHAPE_FIELD_CAP:
+                break
+            field_budget[0] += 1
+            values = [item[name] for item in objects if name in item]
+            nested[name] = _tree_field_profile(
+                values, len(objects), depth + 1, field_budget
+            )
+        profile["field_count"] = len(names)
+        profile["fields"] = nested
+        if len(nested) < len(names):
+            profile["fields_truncated"] = True
+    elif non_null_types == {"array"}:
+        arrays = [item for item in non_null if isinstance(item, list)]
+        lengths = [len(item) for item in arrays]
+        elements = [element for item in arrays for element in item]
+        profile["items_min"] = min(lengths, default=0)
+        profile["items_max"] = max(lengths, default=0)
+        if elements:
+            profile["items"] = _tree_field_profile(
+                elements, len(elements), depth + 1, field_budget
+            )
+    return profile
+
+
+def _json_pointer_segment(value: str) -> str:
+    return value.replace("~", "~0").replace("/", "~1")
 
 
 def _tree_type(value: Any) -> str:

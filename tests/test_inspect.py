@@ -27,6 +27,80 @@ def test_inspect_safe_selector_extracts_records() -> None:
     assert result["shape"]["rows"] == 2
 
 
+def test_inspect_tree_discovers_nested_record_set_and_bounds_nested_sample() -> None:
+    result = DataTransformer().inspect(
+        {
+            "inline": {
+                "data": {
+                    "users": [
+                        {"id": 1, "name": "A"},
+                        {"id": 2, "name": None},
+                        {"id": 3},
+                    ]
+                },
+                "status": 200,
+            }
+        },
+        sample_rows=2,
+    )
+
+    assert result["status"] == "ok"
+    assert result["shape"]["record_sets"] == [
+        {
+            "path": "/data/users",
+            "select": "data.users[*]",
+            "selectable": True,
+            "rows": 3,
+            "columns": 2,
+            "fields": {
+                "id": {"type": "integer", "nullable": False},
+                "name": {
+                    "type": "mixed",
+                    "types": ["null", "string"],
+                    "nullable": True,
+                    "missing_count": 1,
+                    "null_count": 1,
+                },
+            },
+        }
+    ]
+    assert result["sample"] == {
+        "data": {"users": [{"id": 1, "name": "A"}, {"id": 2, "name": None}]},
+        "status": 200,
+    }
+    assert result["shape"]["sample_truncated"] is True
+
+
+def test_inspect_record_set_profiles_nested_object_fields_in_one_call() -> None:
+    result = DataTransformer().inspect(
+        {
+            "inline": {
+                "users": [
+                    {"id": 1, "profile": {"name": "A", "country": "US"}},
+                    {"id": 2, "profile": {"name": "B", "country": None}},
+                ]
+            }
+        },
+        sample_rows=1,
+    )
+
+    profile = result["shape"]["record_sets"][0]["fields"]["profile"]
+    assert profile == {
+        "type": "object",
+        "nullable": False,
+        "field_count": 2,
+        "fields": {
+            "country": {
+                "type": "mixed",
+                "types": ["null", "string"],
+                "nullable": True,
+                "null_count": 1,
+            },
+            "name": {"type": "string", "nullable": False},
+        },
+    }
+
+
 def test_selector_rejects_expression_syntax() -> None:
     result = DataTransformer().inspect({"inline": {"rows": []}, "select": "rows[__import__('os')]"})
 

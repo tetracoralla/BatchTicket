@@ -414,8 +414,18 @@ class TransformationPlan(StrictModel):
 class InspectToolInput(StrictModel):
     source: Source
     sample_rows: Annotated[int, Field(ge=0, le=Limits.HARD_MAX_SAMPLE_ROWS)] = 5
+    target_schema: dict[str, Any] | None = None
+    mappings: Annotated[
+        dict[NonEmptyString, NonEmptyString], Field(max_length=1_000)
+    ] | None = None
     limits: LimitsModel | None = None
     workspace: str | None = None
+
+    @model_validator(mode="after")
+    def mappings_require_target(self) -> InspectToolInput:
+        if self.mappings is not None and self.target_schema is None:
+            raise ValueError("mappings require target_schema")
+        return self
 
 
 class TransformToolInput(StrictModel):

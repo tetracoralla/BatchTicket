@@ -31,8 +31,9 @@ from .output import (
     reserve_staging_output,
     write_output,
 )
+from .schema_adapter import adapt_schema
 from .validation import evaluate_assertions, require_assertions_passed, validate_schema
-from .workspace import Workspace
+from .workspace import SHAPE_FIELD_CAP, Workspace, bound_shape
 
 
 class DataTransformer:
@@ -63,16 +64,30 @@ class DataTransformer:
         source: dict[str, Any],
         *,
         sample_rows: int = 5,
+        target_schema: dict[str, Any] | None = None,
+        mappings: dict[str, str] | None = None,
         limits: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         if not self._inside_worker:
             return self._run_worker(
                 "inspect",
-                {"source": source, "sample_rows": sample_rows, "limits": limits},
+                {
+                    "source": source,
+                    "sample_rows": sample_rows,
+                    "target_schema": target_schema,
+                    "mappings": mappings,
+                    "limits": limits,
+                },
             )
         return self._safe(
             "inspect",
-            lambda: self._inspect(source, sample_rows=sample_rows, limits=limits),
+            lambda: self._inspect(
+                source,
+                sample_rows=sample_rows,
+                target_schema=target_schema,
+                mappings=mappings,
+                limits=limits,
+            ),
         )
 
     def transform(
@@ -163,15 +178,27 @@ class DataTransformer:
         source: dict[str, Any],
         *,
         sample_rows: int,
+        target_schema: dict[str, Any] | None,
+        mappings: dict[str, str] | None,
         limits: dict[str, Any] | None,
     ) -> dict[str, Any]:
         self._validate_source(source)
+        self._validate_adaptation_input(target_schema, mappings)
         self._validate_limits(limits)
         active_limits = Limits.from_dict(limits, {"sample_rows": sample_rows})
         with self._workspace(active_limits) as workspace:
             dataset = workspace.load_source(source, "source", self.base_dir, active_limits)
             shape = workspace.shape(dataset, active_limits.sample_rows, include_quality=True)
             sample = shape.pop("sample", None)
+            if target_schema is not None:
+                adapter_bytes = json_size(target_schema) + json_size(mappings or {})
+                combined_bytes = dataset.byte_size + adapter_bytes
+                if combined_bytes > active_limits.max_input_bytes:
+                    raise DataTransformerError(
+                        "E_INPUT_TOO_LARGE",
+                        "source and schema adapter inputs exceed the cumulative byte limit",
+                        {"bytes": combined_bytes, "maximum": active_limits.max_input_bytes},
+                    )
             result: dict[str, Any] = {
                 "status": "ok",
                 "operation": "inspect",
@@ -179,10 +206,18 @@ class DataTransformer:
                     "format": dataset.source_format,
                     "bytes": dataset.byte_size,
                 },
-                "shape": shape,
+                "shape": bound_shape(shape),
             }
             if sample is not None:
                 result["sample"] = sample
+            if target_schema is not None:
+                result["adaptation"] = adapt_schema(
+                    source,
+                    shape,
+                    target_schema,
+                    mappings,
+                    sample_rows=active_limits.sample_rows,
+                )
             return result
 
     def _transform(
@@ -242,7 +277,7 @@ class DataTransformer:
                 source_receipts[name] = {
                     "format": dataset.source_format,
                     "bytes": dataset.byte_size,
-                    "shape": source_shape,
+                    "shape": bound_shape(source_shape),
                 }
 
             executor = OperationExecutor(workspace, active_limits)
@@ -287,8 +322,10 @@ class DataTransformer:
                 datasets[step_id] = output_dataset
                 previous = step_id
                 step_receipts.append(
-                    self._step_receipt(
-                        step_id, step["op"], before_shape, after_shape, output_dataset
+                    _bound_step_receipt(
+                        self._step_receipt(
+                            step_id, step["op"], before_shape, after_shape, output_dataset
+                        )
                     )
                 )
 
@@ -336,7 +373,7 @@ class DataTransformer:
                 "assertions": assertion_results,
                 "schema_validation": schema_result,
                 "warnings": [warning for step in step_receipts for warning in step["warnings"]],
-                "final_shape": final_shape,
+                "final_shape": bound_shape(final_shape),
                 "result_sha256": self._dataset_hash(workspace, final),
             }
             result_descriptor: dict[str, Any]
@@ -398,7 +435,7 @@ class DataTransformer:
                 "status": "ok",
                 "operation": "validate",
                 "valid": valid,
-                "shape": workspace.shape(dataset, include_quality=True),
+                "shape": bound_shape(workspace.shape(dataset, include_quality=True)),
                 "schema_validation": schema_result,
                 "assertions": assertion_results,
                 "sample": self._sample(workspace, dataset, active_limits.sample_rows),
@@ -492,6 +529,32 @@ class DataTransformer:
                 "source does not satisfy the published contract",
                 {"path": list(first["loc"]), "message": first["msg"]},
             ) from exc
+
+    def _validate_adaptation_input(self, target_schema: Any, mappings: Any) -> None:
+        if target_schema is not None and not isinstance(target_schema, dict):
+            raise DataTransformerError(
+                "E_SCHEMA_INVALID", "target_schema must be a JSON Schema object"
+            )
+        if mappings is not None:
+            if target_schema is None:
+                raise DataTransformerError(
+                    "E_ADAPTER_MAPPING_INVALID", "mappings require target_schema"
+                )
+            if (
+                not isinstance(mappings, dict)
+                or len(mappings) > SHAPE_FIELD_CAP
+                or not all(
+                    isinstance(target, str)
+                    and target
+                    and isinstance(source, str)
+                    and source
+                    for target, source in mappings.items()
+                )
+            ):
+                raise DataTransformerError(
+                    "E_ADAPTER_MAPPING_INVALID",
+                    "mappings must contain at most 1000 non-empty target and source fields",
+                )
 
     def _validate_limits(self, limits: Any) -> None:
         if limits is None:
@@ -837,9 +900,12 @@ class DataTransformer:
             return []
         if dataset.is_table:
             return workspace.rows(dataset, count)
-        if isinstance(dataset.value, list):
-            return json_safe(dataset.value[:count])
-        return json_safe(dataset.value)
+        value = dataset.value
+        if isinstance(value, list):
+            return json_safe(value[:count])
+        if isinstance(value, dict):
+            return {key: json_safe(item) for key, item in list(value.items())[:count]}
+        return json_safe(value)
 
     def _summary(self, sources: dict[str, Any], final_shape: dict[str, Any]) -> dict[str, Any]:
         input_rows = sum(
@@ -862,6 +928,28 @@ class DataTransformer:
                 digest.update(canonical_json(row).encode("utf-8"))
                 digest.update(b"\n")
         return digest.hexdigest()
+
+
+_RECEIPT_LIST_KEYS = (
+    "fields_added",
+    "fields_removed",
+    "values_changed",
+    "paths_added",
+    "paths_removed",
+    "type_changes",
+)
+
+
+def _bound_step_receipt(receipt: dict[str, Any]) -> dict[str, Any]:
+    truncated: dict[str, dict[str, int]] = {}
+    for key in _RECEIPT_LIST_KEYS:
+        values = receipt.get(key)
+        if isinstance(values, list) and len(values) > SHAPE_FIELD_CAP:
+            truncated[key] = {"total": len(values), "returned": SHAPE_FIELD_CAP}
+            receipt[key] = values[:SHAPE_FIELD_CAP]
+    if truncated:
+        receipt["truncated"] = truncated
+    return receipt
 
 
 def _limits_for_operation(operation: str, payload: dict[str, Any]) -> Limits:
@@ -998,10 +1086,26 @@ def _execute_cli_request(
     if command == "inspect":
         source, base_dir, size = _cli_source(request.get("source"))
         document_bytes += size
+        target_schema = None
+        mappings = None
+        if request.get("target_schema") is not None:
+            target_schema, _, size = _read_cli_document(request["target_schema"])
+            document_bytes += size
+        if request.get("mappings") is not None:
+            mappings, _, size = _read_cli_document(request["mappings"])
+            document_bytes += size
         _check_cli_document_budget(document_bytes, limits)
         _check_cli_temporary_budget(request, limits)
+        _check_request_structure(
+            {"target_schema": target_schema, "mappings": mappings}, limits
+        )
         transformer.base_dir = base_dir
-        return transformer.inspect(source, sample_rows=request.get("sample_rows", 5)), limits
+        return transformer.inspect(
+            source,
+            sample_rows=request.get("sample_rows", 5),
+            target_schema=target_schema,
+            mappings=mappings,
+        ), limits
     if command == "validate":
         source, base_dir, size = _cli_source(request.get("source"))
         document_bytes += size
@@ -1015,6 +1119,9 @@ def _execute_cli_request(
             document_bytes += size
         _check_cli_document_budget(document_bytes, limits)
         _check_cli_temporary_budget(request, limits)
+        _check_request_structure(
+            {"schema": schema, "assertions": assertions}, limits
+        )
         transformer.base_dir = base_dir
         return transformer.validate(
             source,

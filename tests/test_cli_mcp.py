@@ -36,6 +36,18 @@ def test_mcp_registry_exposes_only_four_task_level_tools() -> None:
     for tool in tools:
         assert "ctx" not in tool.parameters["properties"]
         assert "workspace" in tool.parameters["properties"]
+    inspect = next(tool for tool in tools if tool.name == "data_inspect")
+    assert "target_schema" in inspect.parameters["properties"]
+    assert "mappings" in inspect.parameters["properties"]
+    transform = next(tool for tool in tools if tool.name == "data_transform")
+    assert '"sources":{"input"' in transform.description
+    assert '"field":"userId","as":"id"' in transform.description
+    assert "never a path" in transform.description
+    assert "Do not use this tool for a validation-only request" in transform.description
+    validate = next(tool for tool in tools if tool.name == "data_validate")
+    assert "choose data_validate, not data_transform" in validate.description
+    assert '"type":"not_null","field":"userId"' in validate.description
+    assert '"type":"unique","field":"userId"' in validate.description
 
 
 def test_mcp_stdio_activation_and_real_tool_call() -> None:
@@ -93,6 +105,32 @@ def test_mcp_stdio_activation_and_real_tool_call() -> None:
             assert file_call.isError is not True
             assert file_call.structuredContent["status"] == "ok"
             assert file_call.structuredContent["shape"]["rows"] == 3
+            assert "rows=3" in file_call.content[0].text
+            assert "fields=" in file_call.content[0].text
+
+            envelope_call = await session.call_tool(
+                "data_inspect",
+                {"source": {"path": "examples/users.json"}, "sample_rows": 2},
+            )
+            assert "record_set=data.users[*]" in envelope_call.content[0].text
+            assert "profile.name" in envelope_call.content[0].text
+
+            adapted = await session.call_tool(
+                "data_inspect",
+                {
+                    "source": {"inline": [{"source_id": 1}]},
+                    "target_schema": {
+                        "type": "object",
+                        "properties": {"id": {"type": "integer"}},
+                        "required": ["id"],
+                    },
+                    "mappings": {"id": "source_id"},
+                },
+            )
+            assert adapted.structuredContent["adaptation"]["status"] == "ready"
+            assert adapted.structuredContent["adaptation"]["draft_plan"]["steps"][0][
+                "fields"
+            ] == [{"field": "source_id", "as": "id"}]
 
             transformed = await session.call_tool(
                 "data_transform",
@@ -109,6 +147,9 @@ def test_mcp_stdio_activation_and_real_tool_call() -> None:
             )
             assert transformed.structuredContent["status"] == "ok"
             assert transformed.structuredContent["result"]["data"] == [{"id": 1}]
+            assert transformed.content[0].text == (
+                'transform: ok; rows_out=1; data=[{"id":1}]'
+            )
 
             invalid = await session.call_tool(
                 "data_transform",
@@ -335,3 +376,90 @@ def test_cli_missing_plan_returns_stable_json_error(tmp_path) -> None:
     assert completed.returncode == 2
     assert result["error"]["code"] == "E_CLI_INPUT"
     assert "Traceback" not in completed.stderr
+
+
+def test_cli_inspect_builds_schema_adapter_draft(tmp_path) -> None:
+    target = tmp_path / "target.json"
+    mappings = tmp_path / "mappings.json"
+    target.write_text(
+        json.dumps(
+            {
+                "type": "object",
+                "properties": {
+                    "age": {"type": "integer"},
+                    "id": {"type": "integer"},
+                },
+                "required": ["age", "id"],
+            }
+        ),
+        encoding="utf-8",
+    )
+    mappings.write_text(json.dumps({"age": "age", "id": "userId"}), encoding="utf-8")
+
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "data_transformer.cli",
+            "--compact",
+            "inspect",
+            "examples/users.json",
+            "--select",
+            "data.users[*]",
+            "--target-schema",
+            str(target),
+            "--mappings",
+            str(mappings),
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    result = json.loads(completed.stdout)
+    assert completed.returncode == 0
+    assert result["adaptation"]["status"] == "ready"
+    assert result["adaptation"]["draft_plan"]["steps"][0]["fields"] == [
+        {"as": "age", "field": "age"},
+        {"as": "id", "field": "userId"},
+    ]
+
+
+def test_cli_schema_documents_share_the_worker_depth_limit(tmp_path) -> None:
+    source = tmp_path / "source.json"
+    source.write_text('[{"id":1}]', encoding="utf-8")
+    nested: dict[str, object] = {"type": "integer"}
+    for index in range(110):
+        nested = {"$defs": {f"level_{index}": nested}, "type": "integer"}
+    schema = tmp_path / "schema.json"
+    schema.write_text(
+        json.dumps(
+            {
+                "type": "object",
+                "properties": {"id": nested},
+                "required": ["id"],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "data_transformer.cli",
+            "--compact",
+            "inspect",
+            str(source),
+            "--target-schema",
+            str(schema),
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    result = json.loads(completed.stdout)
+    assert completed.returncode == 2
+    assert result["status"] == "error"
+    assert result["error"]["code"] == "E_DEPTH_LIMIT"

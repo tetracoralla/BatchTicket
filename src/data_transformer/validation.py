@@ -1,37 +1,82 @@
 from __future__ import annotations
 
+import decimal
+import math
 import re
+from collections.abc import Iterator
 from typing import Any
 
-from jsonschema import Draft202012Validator, SchemaError
+from jsonschema import Draft202012Validator, SchemaError, ValidationError
+from jsonschema.validators import extend
 
 from .dataset import DataSet
 from .errors import DataTransformerError
+from .json_values import normalize_source_numbers, validation_safe
 from .workspace import Workspace, quote_identifier
 
 MAX_VALIDATION_ERRORS = 20
 
 
+def _is_integer(checker: Any, instance: Any) -> bool:
+    # The default draft checker accepts int and integral float; exact decimals
+    # must validate identically so file and inline carriers agree.
+    if isinstance(instance, bool):
+        return False
+    if isinstance(instance, int):
+        return True
+    if isinstance(instance, float):
+        return instance.is_integer()
+    if isinstance(instance, decimal.Decimal):
+        return instance.is_finite() and instance == instance.to_integral_value()
+    return False
+
+
+def _multiple_of(
+    validator: Any, multiple: Any, instance: Any, schema: dict[str, Any]
+) -> Iterator[ValidationError]:
+    # Schema numbers normalize to exact decimals, while DOUBLE-lane table
+    # values arrive as Python floats; the default keyword does the modulo
+    # directly and raises TypeError. Normalize both sides to Decimal so every
+    # lane yields a verdict instead of an internal error.
+    if isinstance(instance, bool) or not validator.is_type(instance, "number"):
+        return
+    if isinstance(instance, float) and not math.isfinite(instance):
+        yield ValidationError(f"{instance!r} is not a multiple of {multiple!r}")
+        return
+    value = (
+        instance if isinstance(instance, decimal.Decimal) else decimal.Decimal(str(instance))
+    )
+    if multiple == 0 or value % multiple != 0:
+        yield ValidationError(f"{instance!r} is not a multiple of {multiple!r}")
+
+
+_VALIDATOR = extend(
+    Draft202012Validator,
+    {"multipleOf": _multiple_of},
+    type_checker=Draft202012Validator.TYPE_CHECKER.redefine("integer", _is_integer),
+)
+
+
 def validate_schema(
     workspace: Workspace, dataset: DataSet, schema: dict[str, Any]
 ) -> dict[str, Any]:
-    if not isinstance(schema, dict):
-        raise DataTransformerError("E_SCHEMA_INVALID", "schema must be an object")
-    try:
-        validator = Draft202012Validator(schema)
-        validator.check_schema(schema)
-    except SchemaError as exc:
-        raise DataTransformerError(
-            "E_SCHEMA_INVALID", "invalid JSON Schema", {"message": exc.message}
-        ) from exc
+    normalized_schema = prepare_schema(schema)
 
-    values = workspace.iter_rows(dataset) if dataset.is_table else iter([dataset.value])
+    validator = _VALIDATOR(normalized_schema)
+    values = (
+        workspace.iter_rows(dataset, safe=validation_safe)
+        if dataset.is_table
+        else iter([validation_safe(dataset.value)])
+    )
     failures: list[dict[str, Any]] = []
     failures_truncated = False
     checked = 0
     for row_index, value in enumerate(values):
         checked += 1
-        for error in sorted(validator.iter_errors(value), key=lambda item: list(item.path)):
+        for error in sorted(
+            validator.iter_errors(value),
+            key=lambda item: tuple(str(part) for part in item.path),
+        ):
             failure = {
                 "row": row_index if dataset.is_table else None,
                 "path": list(error.absolute_path),
@@ -51,6 +96,19 @@ def validate_schema(
         "failures": failures,
         "failures_truncated": failures_truncated,
     }
+
+
+def prepare_schema(schema: dict[str, Any]) -> dict[str, Any]:
+    if not isinstance(schema, dict):
+        raise DataTransformerError("E_SCHEMA_INVALID", "schema must be an object")
+    normalized_schema = normalize_source_numbers(schema)
+    try:
+        _VALIDATOR.check_schema(normalized_schema)
+    except SchemaError as exc:
+        raise DataTransformerError(
+            "E_SCHEMA_INVALID", "invalid JSON Schema", {"message": exc.message}
+        ) from exc
+    return normalized_schema
 
 
 def evaluate_assertions(

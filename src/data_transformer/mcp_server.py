@@ -36,13 +36,18 @@ mcp = FastMCP(
     ),
 )
 
+_MCP_INLINE_TEXT_MAX_BYTES = 4096
+
 
 @mcp.tool(
     name="data_inspect",
     description=(
         "Inspect JSON, JSONL, CSV, TSV, YAML, or Parquet shape, types, counts, and a small "
         "sample without returning the full payload. Use for 'what fields are in this data?' "
-        "or unknown tool output."
+        "or unknown tool output. Optionally compare record fields with target_schema and "
+        "return deterministic mapping candidates; a draft plan is returned only after "
+        "explicit mappings are supplied. One successful call is authoritative; never repeat "
+        "the same arguments to confirm it."
     ),
     annotations={
         "readOnlyHint": True,
@@ -54,6 +59,8 @@ mcp = FastMCP(
 async def data_inspect(
     source: Any,
     sample_rows: Any = 5,
+    target_schema: Any = None,
+    mappings: Any = None,
     limits: Any = None,
     workspace: Any = None,
     ctx: Context | None = None,
@@ -70,8 +77,13 @@ async def data_inspect(
     )
     if isinstance(transformer, dict):
         return _bounded_mcp_result("inspect", transformer, _response_limit(limits))
+    inspect_kwargs = {"sample_rows": sample_rows, "limits": limits}
+    if target_schema is not None:
+        inspect_kwargs["target_schema"] = target_schema
+    if mappings is not None:
+        inspect_kwargs["mappings"] = mappings
     result = await _run_cancellable(
-        lambda: transformer.inspect(source, sample_rows=sample_rows, limits=limits),
+        lambda: transformer.inspect(source, **inspect_kwargs),
         cancel_event,
         cancel_lock,
     )
@@ -81,9 +93,17 @@ async def data_inspect(
 @mcp.tool(
     name="data_transform",
     description=(
-        "Transform, reshape, filter, join, aggregate, cast, flatten, or convert structured "
-        "data with a deterministic Transformation Plan v1. Returns a compact sample and "
-        "change receipt; large results require output.path."
+        "Transform or rewrite records: reshape, filter, join, aggregate, cast, flatten, or "
+        "convert structured data with Transformation Plan v1. Do not use this tool for a "
+        "validation-only request such as checking non-null or unique fields; use "
+        "data_validate. Known transformation shape: "
+        '{"version":"1","sources":{"input":{"path":"users.json","select":'
+        '"data.users[*]"}},"steps":[{"id":"filtered","op":"filter","source":'
+        '"input","where":{"field":"age","gte":18}},{"op":"select","source":'
+        '"filtered","fields":[{"field":"userId","as":"id"}]}],"return":'
+        '{"mode":"auto"}}. Omit workspace with ADT_WORKSPACE_ROOT; otherwise it is an exact '
+        "granted root name, never a path. Returns a compact sample and change receipt; large "
+        "results require output.path."
     ),
     annotations={
         "readOnlyHint": False,
@@ -127,9 +147,12 @@ async def data_transform(
 @mcp.tool(
     name="data_validate",
     description=(
-        "Validate structured data against JSON Schema and deterministic assertions such as "
-        "required, unique, non-null, type, and row count. Returns valid true or false without "
-        "rewriting the source."
+        "Validate or check requirements on existing structured data (校验/检查非空、唯一、类型、"
+        "字段或行数); choose data_validate, not data_transform, for validation-only requests. "
+        "It accepts JSON Schema and deterministic assertions and returns valid true or false "
+        "without rewriting the source. Known validation shape: "
+        '{"source":{"path":"users.json","select":"data.users[*]"},"assertions":'
+        '[{"type":"not_null","field":"userId"},{"type":"unique","field":"userId"}]}.'
     ),
     annotations={
         "readOnlyHint": True,
@@ -262,15 +285,125 @@ def _plan_response_limit(plan: Any) -> int:
     return Limits.max_response_bytes
 
 
-def _mcp_result(operation: str, result: dict[str, Any]) -> CallToolResult:
-    status = str(result.get("status", "error"))
-    code = result.get("error", {}).get("code") if status == "error" else None
-    summary = f"{operation}: {status}" + (f" ({code})" if code else "")
+def _mcp_result(
+    operation: str,
+    result: dict[str, Any],
+    *,
+    include_inline_data: bool = True,
+) -> CallToolResult:
+    summary = _mcp_summary(
+        operation,
+        result,
+        include_inline_data=include_inline_data,
+    )
     return CallToolResult(
         content=[TextContent(type="text", text=summary)],
         structuredContent=result,
         isError=False,
     )
+
+
+def _mcp_summary(
+    operation: str,
+    result: dict[str, Any],
+    *,
+    include_inline_data: bool = True,
+) -> str:
+    status = str(result.get("status", "error"))
+    if status == "error":
+        code = result.get("error", {}).get("code")
+        return f"{operation}: error" + (f" ({code})" if code else "")
+    if operation == "inspect":
+        adaptation = result.get("adaptation")
+        if isinstance(adaptation, dict):
+            adaptation_status = adaptation.get("status")
+            text = f"inspect: {status}; adaptation={adaptation_status}"
+            reason = adaptation.get("reason")
+            if isinstance(reason, str) and reason:
+                text += f"; reason={reason}"
+            source = adaptation.get("source")
+            if isinstance(source, dict) and source.get("select") is not None:
+                text += f"; record_set={source.get('select')}"
+            confirmed = adaptation.get("confirmed_mappings")
+            unresolved = adaptation.get("unresolved")
+            if isinstance(confirmed, list):
+                text += f"; mappings={len(confirmed)}"
+            if isinstance(unresolved, list):
+                text += f"; unresolved={len(unresolved)}"
+            candidates = adaptation.get("source_candidates")
+            if isinstance(candidates, list) and adaptation_status == "needs_source_selection":
+                text += f"; source_candidates={len(candidates)}"
+            draft_plan = adaptation.get("draft_plan")
+            if include_inline_data and isinstance(draft_plan, dict):
+                draft_text = canonical_json(draft_plan)
+                expanded = f"{text}; draft_plan={draft_text}"
+                if len(expanded.encode("utf-8")) <= _MCP_INLINE_TEXT_MAX_BYTES:
+                    text = expanded
+            return text
+        shape = result.get("shape", {})
+        record_sets = shape.get("record_sets") if isinstance(shape, dict) else None
+        if isinstance(record_sets, list) and record_sets:
+            record_set = record_sets[0]
+            fields = record_set.get("fields", {})
+            names, fields_truncated = _summary_field_paths(fields)
+            suffix = ", ..." if fields_truncated else ""
+            return (
+                f"inspect: {status}; record_set={record_set.get('select')}; "
+                f"rows={record_set.get('rows')}; fields={','.join(names)}{suffix}"
+            )
+        if isinstance(shape, dict) and shape.get("kind") == "table":
+            fields = shape.get("fields", {})
+            names, fields_truncated = _summary_field_paths(fields)
+            suffix = ", ..." if fields_truncated else ""
+            return (
+                f"inspect: {status}; rows={shape.get('rows')}; "
+                f"fields={','.join(names)}{suffix}"
+            )
+    if operation == "transform":
+        summary = result.get("summary", {})
+        if isinstance(summary, dict):
+            text = f"transform: {status}; rows_out={summary.get('rows_out')}"
+            descriptor = result.get("result")
+            if (
+                include_inline_data
+                and isinstance(descriptor, dict)
+                and descriptor.get("kind") == "inline"
+                and "data" in descriptor
+            ):
+                inline_text = canonical_json(descriptor["data"])
+                if len(inline_text.encode("utf-8")) <= _MCP_INLINE_TEXT_MAX_BYTES:
+                    text += f"; data={inline_text}"
+            return text
+    if operation == "validate":
+        return f"validate: {status}; valid={result.get('valid')}"
+    if operation == "diff":
+        return (
+            f"diff: {status}; added={result.get('added_rows')}; "
+            f"removed={result.get('removed_rows')}; changed={result.get('changed_rows')}"
+        )
+    return f"{operation}: {status}"
+
+
+def _summary_field_paths(raw_fields: Any, maximum: int = 10) -> tuple[list[str], bool]:
+    if not isinstance(raw_fields, dict):
+        return [], False
+    paths: list[str] = []
+    total = 0
+
+    def visit(fields: dict[str, Any], prefix: str = "") -> None:
+        nonlocal total
+        for name, profile in fields.items():
+            path = f"{prefix}.{name}" if prefix else name
+            nested = profile.get("fields") if isinstance(profile, dict) else None
+            if isinstance(nested, dict) and nested:
+                visit(nested, path)
+            else:
+                total += 1
+                if len(paths) < maximum:
+                    paths.append(path)
+
+    visit(raw_fields)
+    return paths, total > len(paths)
 
 
 def _bounded_mcp_result(
@@ -284,6 +417,15 @@ def _bounded_mcp_result(
     ).encode("utf-8")
     if len(encoded) <= maximum:
         return candidate
+    # Rich text is a compatibility aid for hosts that do not surface
+    # structuredContent to the model. It must never turn an otherwise valid
+    # structured result into a response-budget error.
+    compact_candidate = _mcp_result(operation, result, include_inline_data=False)
+    encoded = canonical_json(
+        compact_candidate.model_dump(mode="json", by_alias=True, exclude_none=True)
+    ).encode("utf-8")
+    if len(encoded) <= maximum:
+        return compact_candidate
     bounded_error = DataTransformerError(
         "E_RESPONSE_TOO_LARGE",
         "complete serialized MCP response exceeds the response budget",

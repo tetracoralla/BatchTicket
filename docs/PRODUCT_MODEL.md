@@ -18,9 +18,10 @@ inspect source -> author or review plan -> dry-run -> transform -> consume outpu
 Agent flow:
 
 ```text
-data_inspect -> data_transform -> downstream tool
-                    |
-             receipt + compact sample
+known shape --------------------------> data_transform -> downstream tool
+unknown shape -> data_inspect ----------------^              |
+target schema -> candidates -> explicit mapping -> draft plan
+                                                   receipt + compact sample
 ```
 
 Validation and diff are independent entry points and can also be used after transformation.
@@ -50,11 +51,18 @@ The public MCP surface is four task-level tools:
 
 An ordinary known task should require one tool call. Inspect is used only when source shape is genuinely unknown. Invalid input returns one stable error and must not invite speculative retries. The weakest intended caller only needs to construct JSON objects and choose from documented enum values.
 
+`data_inspect` also owns the deterministic Schema Adapter profile. It compares one source
+record set with an object-record JSON Schema, reports exact and normalized-name candidates,
+and produces a normal Plan v1 only after required mappings are explicit and compatible.
+Ambiguous record sets, semantic synonyms, composed schemas, casts, defaults, and missing
+required fields remain unresolved; they are not guessed by the runtime.
+
 ## Deliberate v1 boundaries
 
 - Inputs: inline values or explicit local paths in JSON, JSONL, CSV, TSV, YAML, and Parquet.
 - Outputs: JSON, JSONL, CSV, TSV, YAML, and Parquet.
 - No network sources, URLs, database connections, arbitrary source code, raw SQL, jq, or JSONPath.
+- The Schema Adapter v1 maps top-level record fields only. It supports object schemas and arrays of one object schema, but does not resolve `$ref`/composition or choose business-semantic synonyms.
 - Default behavior is pure: no file is written unless `output.path` is explicit.
 - Existing output files are protected unless `output.overwrite` is explicitly true.
 - CLI local paths express direct user authority. MCP paths use explicit client-granted MCP roots, with `ADT_WORKSPACE_ROOT` only as a compatibility grant for clients without roots support. A single root is automatic and multiple roots require the tool's named `workspace` selection. Paths remain relative to the selected root; absolute, parent, URI, and symlink escapes are rejected.

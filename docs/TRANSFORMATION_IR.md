@@ -31,6 +31,31 @@ Every step reads an explicit `source`, or the preceding step when omitted. A ste
 
 Every nested object is closed: unknown fields, conflicting source forms, ambiguous condition/expression shapes, and operation fields that do not belong to the selected `op` are rejected. The executable contract in `contracts.py` generates both the live MCP schema and `schemas/transformation-plan.schema.json`.
 
+## Inspection and Schema Adapter
+
+For unselected JSON/YAML envelopes, inspection returns bounded `shape.record_sets`
+profiles for nested arrays of objects. Each profile includes its source path, a safe
+selector when representable, row and field counts, and recursively profiled logical JSON
+types. The separate bounded tree `sample` retains examples at those paths. Discovery is
+capped by the same whole-call item, depth, source, response, and time limits as the rest of
+the runtime.
+
+`data_inspect` can also receive a JSON `target_schema` and optional
+`mappings: {target_field: source_field}`. The `record-schema-v1` adapter:
+
+- supports an object record schema or an array whose `items` is one object schema;
+- suggests exact and Unicode-normalized/case-folded name matches, never fuzzy synonyms;
+- requires an explicit mapping for every required target field;
+- rejects missing source fields and incompatible or nullable-to-non-nullable mappings;
+- reports omitted optional targets, dropped sources, and one source mapped to multiple targets;
+- selects among nested record sets only when one candidate has uniquely stronger structural evidence;
+- translates supported array `minItems`/`maxItems` into row-count assertions; and
+- returns no `draft_plan` for ambiguity, unsupported composition/references, unresolved mappings,
+  or inline exact decimals that a public JSON plan would have to turn into strings.
+
+A ready `draft_plan` is an ordinary Plan v1 using `select` and target-schema validation.
+The adapter is planning assistance inside inspection, not a separate execution engine.
+
 ## Operators
 
 Table operators:

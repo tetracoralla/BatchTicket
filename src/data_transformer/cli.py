@@ -30,6 +30,12 @@ def build_parser() -> argparse.ArgumentParser:
     inspect_parser = subparsers.add_parser("inspect", help="inspect shape without dumping data")
     _add_source_arguments(inspect_parser, "source")
     inspect_parser.add_argument("--sample-rows", type=int, default=5)
+    inspect_parser.add_argument(
+        "--target-schema", help="JSON or YAML Schema for deterministic mapping analysis"
+    )
+    inspect_parser.add_argument(
+        "--mappings", help="JSON or YAML object mapping target fields to source fields"
+    )
 
     transform_parser = subparsers.add_parser("transform", help="run a Transformation Plan v1")
     transform_parser.add_argument("plan", help="JSON or YAML plan path, or - for stdin JSON")
@@ -101,6 +107,16 @@ def _run_command(args: argparse.Namespace, parser: argparse.ArgumentParser) -> d
                     args.source, args.format, args.select, args.kind, temporary_paths
                 ),
                 "sample_rows": args.sample_rows,
+                "target_schema": (
+                    _document_descriptor(args.target_schema, temporary_paths)
+                    if args.target_schema
+                    else None
+                ),
+                "mappings": (
+                    _document_descriptor(args.mappings, temporary_paths)
+                    if args.mappings
+                    else None
+                ),
             }
         elif args.command == "validate":
             request = {
