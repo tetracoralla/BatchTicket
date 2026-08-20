@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import subprocess
 import sys
 import time
@@ -160,7 +161,10 @@ def test_flatten_preserves_empty_objects_and_empty_table_schema(tmp_path) -> Non
             "steps": [{"op": "flatten"}, {"op": "unflatten"}],
         }
     )
-    assert list(table_round_trip["receipt"]["final_shape"]["fields"]) == ["id", "name"]
+    assert list(table_round_trip["execution_effects"]["final_shape"]["fields"]) == [
+        "id",
+        "name",
+    ]
 
 
 def test_empty_schema_table_refuses_lossy_json_output(tmp_path) -> None:
@@ -194,6 +198,14 @@ def test_library_api_works_from_python_c_without_spawn_traceback() -> None:
     assert "Traceback" not in completed.stderr
 
 
+def test_library_default_never_forks_a_multithreaded_posix_host() -> None:
+    transformer = DataTransformer()
+
+    assert transformer.worker_start_method == (
+        "forkserver" if os.name == "posix" else "spawn"
+    )
+
+
 def test_mcp_handler_waits_do_not_block_the_event_loop(monkeypatch) -> None:
     def slow_inspect(self, source, *, sample_rows=5, limits=None):
         del self, source, sample_rows, limits
@@ -218,7 +230,7 @@ def test_unnamed_mcp_root_is_accepted(tmp_path) -> None:
     assert choices == {"root-1": tmp_path.resolve()}
 
 
-def test_tree_mutation_receipt_reports_nested_changes() -> None:
+def test_tree_mutation_effects_report_nested_changes() -> None:
     result = DataTransformer().transform(
         {
             "version": "1",
@@ -226,9 +238,9 @@ def test_tree_mutation_receipt_reports_nested_changes() -> None:
             "steps": [{"op": "delete", "path": "a.b"}],
         }
     )
-    receipt = result["receipt"]["steps"][0]
-    assert receipt["fields_removed"] == ["/a/b"]
-    assert receipt["values_changed"] == ["/", "/a"]
+    effects = result["execution_effects"]["steps"][0]
+    assert effects["fields_removed"] == ["/a/b"]
+    assert effects["values_changed"] == ["/", "/a"]
 
 
 def test_published_schemas_express_runtime_hard_maximums() -> None:

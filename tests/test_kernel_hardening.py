@@ -211,7 +211,7 @@ def test_explode_reports_rows_dropped_for_empty_and_null_arrays() -> None:
         {"id": 1, "tags": "a"},
         {"id": 1, "tags": "b"},
     ]
-    warnings = result["receipt"]["warnings"]
+    warnings = result["execution_effects"]["warnings"]
     assert {"code": "W_EXPLODE_EMPTY", "field": "tags", "dropped_rows": 2} in warnings
 
 
@@ -243,7 +243,7 @@ def test_wide_object_transform_fits_the_response_budget() -> None:
     )
 
     assert result["status"] == "ok"
-    final_shape = result["receipt"]["final_shape"]
+    final_shape = result["execution_effects"]["final_shape"]
     assert len(final_shape["fields"]) == 1_000
     assert final_shape["fields_truncated"] is True
     assert final_shape["field_count"] == 50_000
@@ -369,8 +369,8 @@ def test_flatten_collision_warns_and_keeps_escaped_field() -> None:
     # The escaped representation is preserved; the rename is no longer silent.
     assert result["result"]["data"] == [{"a_b": 1, "a\\_b": 2}]
     collision = {"code": "W_FLATTEN_COLLISION", "field": "a_b", "renamed_to": "a\\_b"}
-    assert collision in result["receipt"]["steps"][0]["warnings"]
-    assert collision in result["receipt"]["warnings"]
+    assert collision in result["execution_effects"]["steps"][0]["warnings"]
+    assert collision in result["execution_effects"]["warnings"]
 
     quiet = DataTransformer().transform(
         {
@@ -386,8 +386,8 @@ def test_flatten_collision_warns_and_keeps_escaped_field() -> None:
         }
     )
     assert quiet["status"] == "ok"
-    assert quiet["receipt"]["steps"][0]["warnings"] == []
-    assert quiet["receipt"]["warnings"] == []
+    assert quiet["execution_effects"]["steps"][0]["warnings"] == []
+    assert quiet["execution_effects"]["warnings"] == []
 
 
 def test_flatten_collision_warning_covers_nested_paths() -> None:
@@ -409,8 +409,8 @@ def test_flatten_collision_warning_covers_nested_paths() -> None:
         "field": "x_a_b",
         "renamed_to": "x_a\\_b",
     }
-    assert collision in result["receipt"]["steps"][0]["warnings"]
-    assert collision in result["receipt"]["warnings"]
+    assert collision in result["execution_effects"]["steps"][0]["warnings"]
+    assert collision in result["execution_effects"]["warnings"]
 
 
 def test_flatten_collision_warning_covers_paths_split_across_rows() -> None:
@@ -431,8 +431,8 @@ def test_flatten_collision_warning_covers_paths_split_across_rows() -> None:
         "field": "a_b",
         "renamed_to": "a\\_b",
     }
-    assert collision in result["receipt"]["steps"][0]["warnings"]
-    assert collision in result["receipt"]["warnings"]
+    assert collision in result["execution_effects"]["steps"][0]["warnings"]
+    assert collision in result["execution_effects"]["warnings"]
 
 
 def test_tabular_mixed_type_fields_are_rejected_instead_of_coerced() -> None:
@@ -466,7 +466,7 @@ def test_json_schema_decimal_keywords_use_exact_schema_numbers() -> None:
         assert result["valid"] is True
 
 
-def test_truncated_tree_receipt_reports_original_counts() -> None:
+def test_truncated_tree_effects_report_original_counts() -> None:
     source = {f"key_{index}": index for index in range(1_500)}
     replacement = {f"key_{index}": index + 1 for index in range(1_500)}
     result = DataTransformer().transform(
@@ -479,7 +479,7 @@ def test_truncated_tree_receipt_reports_original_counts() -> None:
     )
 
     assert result["status"] == "ok"
-    step = result["receipt"]["steps"][0]
+    step = result["execution_effects"]["steps"][0]
     assert len(step["values_changed"]) == 1_000
     assert step["truncated"]["values_changed"] == {
         "total": 1_501,

@@ -1,0 +1,73 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  quality:
+    name: Python ${{ matrix.python-version }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.14"]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          enable-cache: true
+          python-version: ${{ matrix.python-version }}
+      - run: uv sync --frozen --extra dev --python "${{ matrix.python-version }}"
+      - run: uv run --frozen pytest -q
+      - run: uv run --frozen ruff check .
+      - run: uv run --frozen python scripts/generate_plan_schema.py --check
+      - run: uv run --frozen python scripts/check_release_hygiene.py
+      - if: matrix.python-version == '3.11'
+        run: |
+          uv build
+          uv run --frozen python scripts/check_release_artifacts.py
+
+  dependency-audit:
+    name: Dependency audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          enable-cache: true
+          python-version: "3.11"
+      - name: Audit locked runtime and development dependencies
+        run: |
+          batchticket_audit_file="$(mktemp)"
+          trap 'rm -f "$batchticket_audit_file"' EXIT
+          uv export --frozen --all-extras --no-emit-project --no-hashes --no-header --no-annotate > "$batchticket_audit_file"
+          uvx --from pip-audit==2.10.1 pip-audit --requirement "$batchticket_audit_file" --no-deps --disable-pip --strict --progress-spinner off
+
+  plugin-smoke:
+    name: Self-contained plugin smoke test
+    runs-on: macos-14
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          enable-cache: true
+          python-version: "3.11"
+      - run: uv sync --frozen --extra dev --python "3.11"
+      - name: Build and probe without publishing artifacts
+        run: |
+          # A workspace path stays free of symlinked components on both runner
+          # images; macOS mktemp -d resolves through the /var symlink, which the
+          # build's symlink guard rejects.
+          batchticket_plugin_root="$PWD/.batchticket-plugin-build"
+          trap 'rm -rf "$batchticket_plugin_root"' EXIT
+          uv run --frozen python scripts/build_plugin.py --output-root "$batchticket_plugin_root"
+          batchticket_plugin_bundle="$(find "$batchticket_plugin_root" -maxdepth 1 -type d -name 'data-transformer-*' -print -quit)"
+          test -n "$batchticket_plugin_bundle"
+          uv run --frozen python scripts/probe_plugin.py "$batchticket_plugin_bundle"

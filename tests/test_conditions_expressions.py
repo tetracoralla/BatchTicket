@@ -115,7 +115,7 @@ def test_drop_and_rename_record_field_changes() -> None:
     )
 
     assert result["result"]["data"] == [{"id": 1, "name": "Alice"}]
-    assert result["receipt"]["steps"][0]["fields_removed"] == ["internal"]
+    assert result["execution_effects"]["steps"][0]["fields_removed"] == ["internal"]
 
 
 def test_group_aggregate_variants() -> None:
@@ -173,4 +173,4 @@ def test_lossy_cast_is_recorded() -> None:
     )
 
     assert result["status"] == "ok"
-    assert result["receipt"]["warnings"][0]["code"] == "W_LOSSY_CAST"
+    assert result["execution_effects"]["warnings"][0]["code"] == "W_LOSSY_CAST"

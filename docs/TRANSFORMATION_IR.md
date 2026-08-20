@@ -101,7 +101,7 @@ Leaves are `field` or `value`. Operations are `add`, `subtract`, `multiply`, `di
 
 - `auto`: return data inline when it fits; otherwise return the explicit output reference.
 - `inline`: require the full result to fit `max_inline_bytes`.
-- `summary`: return summary, sample, and receipt only.
+- `summary`: return summary, sample, and execution effects only.
 - `reference`: require `output.path` and return its reference.
 
 `sample_rows` and `max_inline_bytes` are hard-capped even if a caller asks for more.
@@ -109,11 +109,11 @@ Leaves are `field` or `value`. Operations are `add`, `subtract`, `multiply`, `di
 Execution is also bounded by `max_input_bytes`, `max_sources`, `max_rows`,
 `max_items`, `max_depth`, `max_steps`, `max_memory_mb`, `max_temp_bytes`,
 `timeout_ms`, and `max_response_bytes`. `timeout_ms` and `max_memory_mb` apply to the
-whole isolated call, including parsing, schema validation, execution, receipts,
+whole isolated call, including parsing, schema validation, execution, effect accounting,
 hashing, and serialization. `max_response_bytes` applies to the complete serialized
 result rather than only `result.data`. Requested values cannot exceed the runtime's
 hard safety ceilings.
 
-## Receipt
+## Execution effects
 
-The receipt records current input/output shapes, per-step row and field changes, value-level lossy-cast warnings, and assertion outcomes. Tree mutations record added and removed JSON Pointer paths, changed values, and type changes. Join receipts separately report both inputs, matched pairs and sides, unmatched rows, fan-out, output rows, and newly introduced nulls. It is an execution account, not a claim that a business mapping was correct.
+`execution_effects` records current input/output shapes, per-step row and field changes, value-level lossy-cast warnings, and assertion outcomes. Tree mutations record added and removed JSON Pointer paths, changed values, and type changes. Join effects separately report both inputs, matched pairs and sides, unmatched rows, fan-out, output rows, and newly introduced nulls. These are first-party runtime observations, not independent verification and not a claim that a business mapping was correct.

@@ -13,7 +13,7 @@ def _render_schema() -> str:
         {
             "$schema": "https://json-schema.org/draft/2020-12/schema",
             "$id": "https://openadam.local/schemas/data-transformer/plan-v1.json",
-            "title": "Agent Data Transformer Plan v1",
+            "title": "BatchTicket Transformation Plan v1",
         }
     )
     return json.dumps(schema, ensure_ascii=False, indent=2) + "\n"

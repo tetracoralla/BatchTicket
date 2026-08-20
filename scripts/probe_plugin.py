@@ -70,7 +70,11 @@ async def _probe(bundle: Path) -> dict[str, Any]:
                     list_roots_callback=list_roots,
                 ) as session,
             ):
-                await session.initialize()
+                initialized = await session.initialize()
+                if initialized.serverInfo.name != "BatchTicket":
+                    raise AssertionError(
+                        f"unexpected installed server brand: {initialized.serverInfo.name}"
+                    )
                 tools = await session.list_tools()
                 names = {tool.name for tool in tools.tools}
                 if names != EXPECTED_TOOLS:
@@ -106,6 +110,12 @@ async def _probe(bundle: Path) -> dict[str, Any]:
                     },
                 )
                 _require_ok(transformed, "transform")
+                if "receipt" in transformed.structuredContent:
+                    raise AssertionError(
+                        "installed transform still exposes the retired receipt key"
+                    )
+                if "execution_effects" not in transformed.structuredContent:
+                    raise AssertionError("installed transform omitted execution_effects")
                 written = json.loads((workspace / "result.json").read_text(encoding="utf-8"))
                 if written != [{"id": 1, "blob": "x" * 10_000}]:
                     raise AssertionError("installed transform wrote the wrong result")
@@ -255,7 +265,7 @@ def _require_error(result: Any, code: str) -> None:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Probe a built Data Transformer plugin")
+    parser = argparse.ArgumentParser(description="Probe a built BatchTicket plugin")
     parser.add_argument("bundle", type=Path)
     args = parser.parse_args()
     print(json.dumps(asyncio.run(_probe(args.bundle.resolve())), indent=2, sort_keys=True))

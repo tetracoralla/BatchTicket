@@ -177,7 +177,7 @@ def _preflight_marketplace(output_root: Path, *, replace: bool) -> Path:
 def _marketplace_payload(bundle_name: str) -> dict[str, object]:
     return {
         "name": "data-transformer-local",
-        "interface": {"displayName": "Data Transformer Local"},
+        "interface": {"displayName": "BatchTicket Local"},
         "plugins": [
             {
                 "name": "data-transformer",
@@ -322,7 +322,7 @@ def build(output_root: Path, *, replace: bool) -> dict[str, str]:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Build a self-contained Data Transformer plugin")
+    parser = argparse.ArgumentParser(description="Build a self-contained BatchTicket plugin")
     parser.add_argument(
         "--output-root",
         type=Path,

@@ -126,7 +126,7 @@ def test_published_and_live_mcp_plan_schemas_are_complete() -> None:
     generated = TransformationPlan.model_json_schema(by_alias=True)
     for metadata in ["$schema", "$id"]:
         published.pop(metadata, None)
-    generated["title"] = "Agent Data Transformer Plan v1"
+    generated["title"] = "BatchTicket Transformation Plan v1"
     assert published == generated
 
     tool = next(tool for tool in mcp._tool_manager.list_tools() if tool.name == "data_transform")
@@ -159,7 +159,7 @@ def test_large_integer_to_double_reports_value_level_loss() -> None:
         _plan([{"id": 9_007_199_254_740_993}], [{"op": "cast", "field": "id", "to": "number"}])
     )
     assert result["status"] == "ok"
-    warning = result["receipt"]["warnings"][0]
+    warning = result["execution_effects"]["warnings"][0]
     assert warning["code"] == "W_LOSSY_CAST"
     assert warning["affected_rows"] == 1
 
@@ -239,7 +239,7 @@ def test_empty_schema_carriers_keep_fields_and_inline_file_json_kinds_match(tmp_
     assert inline["shape"]["kind"] == file_result["shape"]["kind"] == selected["shape"]["kind"]
 
 
-def test_join_receipt_reports_both_inputs_unmatched_fanout_and_new_nulls() -> None:
+def test_join_effects_report_both_inputs_unmatched_fanout_and_new_nulls() -> None:
     plan = {
         "version": "1",
         "sources": {
@@ -251,14 +251,14 @@ def test_join_receipt_reports_both_inputs_unmatched_fanout_and_new_nulls() -> No
         ],
     }
     result = DataTransformer().transform(plan)
-    receipt = result["receipt"]["steps"][0]
-    assert receipt["inputs"]["left"]["rows"] == 2
-    assert receipt["inputs"]["right"]["rows"] == 2
-    assert receipt["matches"]["pairs"] == 2
-    assert receipt["unmatched"]["left_rows"] == 1
-    assert receipt["fan_out"]["extra_left_copies"] == 1
-    assert receipt["new_nulls"][0]["rows"] == 1
-    assert {warning["code"] for warning in receipt["warnings"]} >= {
+    effects = result["execution_effects"]["steps"][0]
+    assert effects["inputs"]["left"]["rows"] == 2
+    assert effects["inputs"]["right"]["rows"] == 2
+    assert effects["matches"]["pairs"] == 2
+    assert effects["unmatched"]["left_rows"] == 1
+    assert effects["fan_out"]["extra_left_copies"] == 1
+    assert effects["new_nulls"][0]["rows"] == 1
+    assert {warning["code"] for warning in effects["warnings"]} >= {
         "W_JOIN_UNMATCHED",
         "W_JOIN_FANOUT",
         "W_NULLS_INTRODUCED",

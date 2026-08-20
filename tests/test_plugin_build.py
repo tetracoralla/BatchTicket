@@ -27,7 +27,7 @@ def test_plugin_build_writes_installable_local_marketplace(tmp_path) -> None:
     payload = json.loads(marketplace.read_text(encoding="utf-8"))
     assert payload == {
         "name": "data-transformer-local",
-        "interface": {"displayName": "Data Transformer Local"},
+        "interface": {"displayName": "BatchTicket Local"},
         "plugins": [
             {
                 "name": "data-transformer",

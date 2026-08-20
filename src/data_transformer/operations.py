@@ -471,7 +471,7 @@ class OperationExecutor:
 
     def _dropped_explode_rows(self, source: DataSet, field: str) -> int:
         # unnest removes rows whose array cell is null or empty; report the
-        # drop instead of letting it vanish from the receipt.
+        # drop instead of letting it vanish from the recorded execution effects.
         try:
             row = self.workspace.connection.execute(
                 f"SELECT count(*) FROM {self._table(source)} "

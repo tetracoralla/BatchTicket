@@ -8,9 +8,9 @@
   "skills": "./skills/",
   "mcpServers": "./.mcp.json",
   "interface": {
-    "displayName": "Data Transformer",
+    "displayName": "BatchTicket",
     "shortDescription": "Deterministic typed data pipes for Agents.",
-    "longDescription": "Inspect and reshape structured tool output through a safe, versioned transformation plan with compact samples, validation, and change receipts.",
+    "longDescription": "Inspect and reshape structured tool output through a safe, versioned transformation plan with compact samples, validation, and explicit execution effects.",
     "developerName": "openAdam",
     "category": "Productivity",
     "capabilities": ["Inspect", "Transform", "Validate", "Compare"],

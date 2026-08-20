@@ -28,7 +28,7 @@ from .limits import Limits
 from .runtime import DataTransformer
 
 mcp = FastMCP(
-    "Agent Data Transformer",
+    "BatchTicket",
     instructions=(
         "Use these tools for deterministic JSON, JSONL, CSV, TSV, YAML, or Parquet "
         "inspection, reshaping, validation, and comparison. Inspect only when the shape "
@@ -46,8 +46,8 @@ _MCP_INLINE_TEXT_MAX_BYTES = 4096
         "sample without returning the full payload. Use for 'what fields are in this data?' "
         "or unknown tool output. Optionally compare record fields with target_schema and "
         "return deterministic mapping candidates; a draft plan is returned only after "
-        "explicit mappings are supplied. One successful call is authoritative; never repeat "
-        "the same arguments to confirm it."
+        "explicit mappings are supplied. One successful call is sufficient for its recorded "
+        "observations; never repeat the same arguments to confirm it."
     ),
     annotations={
         "readOnlyHint": True,
@@ -102,8 +102,8 @@ async def data_inspect(
         '"input","where":{"field":"age","gte":18}},{"op":"select","source":'
         '"filtered","fields":[{"field":"userId","as":"id"}]}],"return":'
         '{"mode":"auto"}}. Omit workspace with ADT_WORKSPACE_ROOT; otherwise it is an exact '
-        "granted root name, never a path. Returns a compact sample and change receipt; large "
-        "results require output.path."
+        "granted root name, never a path. Returns a compact sample and explicit execution "
+        "effects; large results require output.path."
     ),
     annotations={
         "readOnlyHint": False,

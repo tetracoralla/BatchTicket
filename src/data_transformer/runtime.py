@@ -53,7 +53,7 @@ class DataTransformer:
         self.base_dir = self.resource_root or Path.cwd().resolve()
         self.restrict_paths = restrict_paths
         self.worker_start_method = worker_start_method or (
-            "fork" if os.name == "posix" else "spawn"
+            "forkserver" if os.name == "posix" else "spawn"
         )
         self._inside_worker = _inside_worker
         self._cancel_event = _cancel_event
@@ -247,7 +247,7 @@ class DataTransformer:
             )
         with self._workspace(active_limits) as workspace:
             datasets: dict[str, DataSet] = {}
-            source_receipts: dict[str, Any] = {}
+            source_effects: dict[str, Any] = {}
             if len(plan["sources"]) > active_limits.max_sources:
                 raise DataTransformerError(
                     "E_SOURCE_LIMIT",
@@ -274,14 +274,14 @@ class DataTransformer:
                         {"rows": cumulative_rows, "maximum": active_limits.max_rows},
                     )
                 datasets[name] = dataset
-                source_receipts[name] = {
+                source_effects[name] = {
                     "format": dataset.source_format,
                     "bytes": dataset.byte_size,
                     "shape": bound_shape(source_shape),
                 }
 
             executor = OperationExecutor(workspace, active_limits)
-            step_receipts: list[dict[str, Any]] = []
+            step_effects: list[dict[str, Any]] = []
             previous: str | None = None
             for index, step in enumerate(plan["steps"]):
                 step_id = step.get("id", f"step_{index + 1}")
@@ -321,9 +321,9 @@ class DataTransformer:
                 after_shape = workspace.shape(output_dataset)
                 datasets[step_id] = output_dataset
                 previous = step_id
-                step_receipts.append(
-                    _bound_step_receipt(
-                        self._step_receipt(
+                step_effects.append(
+                    _bound_step_effects(
+                        self._step_effects(
                             step_id, step["op"], before_shape, after_shape, output_dataset
                         )
                     )
@@ -366,13 +366,13 @@ class DataTransformer:
                     {"maximum_inline_bytes": active_limits.max_inline_bytes},
                 )
 
-            receipt = {
+            execution_effects = {
                 "plan_version": "1",
-                "sources": source_receipts,
-                "steps": step_receipts,
+                "sources": source_effects,
+                "steps": step_effects,
                 "assertions": assertion_results,
                 "schema_validation": schema_result,
-                "warnings": [warning for step in step_receipts for warning in step["warnings"]],
+                "warnings": [warning for step in step_effects for warning in step["warnings"]],
                 "final_shape": bound_shape(final_shape),
                 "result_sha256": self._dataset_hash(workspace, final),
             }
@@ -391,9 +391,9 @@ class DataTransformer:
                 "status": "dry_run" if is_dry_run else "ok",
                 "operation": "transform",
                 "result": result_descriptor,
-                "summary": self._summary(source_receipts, final_shape),
+                "summary": self._summary(source_effects, final_shape),
                 "sample": sample,
-                "receipt": receipt,
+                "execution_effects": execution_effects,
             }
 
     def _validate(
@@ -807,7 +807,7 @@ class DataTransformer:
                 operation
             )
 
-    def _step_receipt(
+    def _step_effects(
         self,
         step_id: str,
         operation: str,
@@ -930,7 +930,7 @@ class DataTransformer:
         return digest.hexdigest()
 
 
-_RECEIPT_LIST_KEYS = (
+_EFFECT_LIST_KEYS = (
     "fields_added",
     "fields_removed",
     "values_changed",
@@ -940,16 +940,16 @@ _RECEIPT_LIST_KEYS = (
 )
 
 
-def _bound_step_receipt(receipt: dict[str, Any]) -> dict[str, Any]:
+def _bound_step_effects(effects: dict[str, Any]) -> dict[str, Any]:
     truncated: dict[str, dict[str, int]] = {}
-    for key in _RECEIPT_LIST_KEYS:
-        values = receipt.get(key)
+    for key in _EFFECT_LIST_KEYS:
+        values = effects.get(key)
         if isinstance(values, list) and len(values) > SHAPE_FIELD_CAP:
             truncated[key] = {"total": len(values), "returned": SHAPE_FIELD_CAP}
-            receipt[key] = values[:SHAPE_FIELD_CAP]
+            effects[key] = values[:SHAPE_FIELD_CAP]
     if truncated:
-        receipt["truncated"] = truncated
-    return receipt
+        effects["truncated"] = truncated
+    return effects
 
 
 def _limits_for_operation(operation: str, payload: dict[str, Any]) -> Limits:

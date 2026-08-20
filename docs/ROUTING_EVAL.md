@@ -2,7 +2,7 @@
 
 ## Scope and environment
 
-This evaluation covers the locally installed, self-contained Data Transformer 0.2.0
+This evaluation covers the locally installed, self-contained BatchTicket 0.2.0
 release candidate. It does not use the source checkout, project virtual environment,
 `uv`, or network access to execute data operations.
 
@@ -39,7 +39,7 @@ The final known transform returned, in its first and only data call:
 ```
 
 The complete host token totals include the host's global instructions, memory, installed
-skills, and other plugin schemas; they are not the marginal Data Transformer cost. They
+skills, and other plugin schemas; they are not the marginal BatchTicket cost. They
 are retained because cold-host cost is still an operational concern. The transform run's
 large cached baseline is a host-level residual risk even though its product route met the
 one-call budget.
@@ -98,3 +98,44 @@ The tool returned `valid: true`; both assertions passed. There was no retry, she
 generic fallback, or model-side data rewrite. The host reported 139,455 input tokens
 (114,432 cached) and 1,749 output tokens, reinforcing that host-level context cost remains
 high even though the product route met its one-call budget.
+
+## BatchTicket contract recheck (2026-08-20)
+
+After the product brand changed to BatchTicket and the transform result key changed to
+`execution_effects`, the stable bundle was rebuilt and reinstalled through the normal
+marketplace path. The bundle and installed-cache executables had the same SHA-256 digest.
+The installed server initialized with `serverInfo.name: BatchTicket`, exposed the same four
+technical tool names, returned `execution_effects`, and did not return the retired key.
+
+In a fresh isolated Chinese session, the ordinary request to filter two inline records and
+rename `userId` to `id` selected the installed `data_transform` once. It returned exactly
+`[{"age":20,"id":1}]`; there was no second data call, retry, generic fallback, or
+model-side rewrite. The host reported 81,903 input tokens (59,648 cached) and 452 output
+tokens. This confirms current installation and routing behavior, not the semantic
+correctness of an unrelated business mapping.
+
+## Open-source candidate recheck (2026-08-20)
+
+After the release-preparation fixes, the stable macOS arm64 bundle was rebuilt and installed
+again through `codex plugin add`. The source bundle and installed-cache executables both had
+SHA-256 `e8bdf2e234f66d5facb19ceb9bb3fd13a71d5077cb1ffb29b9d667aff29e963c`.
+The installed bundle then passed the direct ten-sequence probe.
+
+A new ephemeral Codex session ran from an isolated non-repository workspace with only
+`ADT_WORKSPACE_ROOT` as the compatibility grant. The Chinese request to check whether
+`userId` was non-null and unique selected `data_validate` once with the canonical source
+selector and two assertions. The structured result returned `valid: true`; both assertions
+passed. There was no second BatchTicket call, retry, shell, search, or model-side rewrite.
+
+The host reported 198,934 input tokens (167,424 cached) and 625 output tokens. It also emitted
+generic startup/shutdown warnings for some enabled MCP clients without identifying the servers;
+they did not prevent the installed `data-transformer` server from completing its one call. The
+high host-level context total remains an operational cost risk.
+
+## Publication recheck (2026-08-20)
+
+Immediately before source publication, another fresh isolated workspace repeated the
+validation request against the normally installed plugin. The host selected `data_validate`
+exactly once, both assertions passed, and there was no fallback. It reported 74,154 input
+tokens (54,528 cached) and 488 output tokens. This lower run does not remove the cost risk:
+the total is host-dependent and still substantially larger than the tool result itself.

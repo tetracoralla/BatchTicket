@@ -49,8 +49,12 @@ def test_conversation_projection_flow_is_deterministic() -> None:
 
     assert first["status"] == "ok"
     assert first["result"]["data"] == [{"id": 123, "name": "Alice"}]
-    assert first["receipt"]["steps"][0]["row_delta"] == -1
-    assert first["receipt"]["result_sha256"] == second["receipt"]["result_sha256"]
+    assert "receipt" not in first
+    assert first["execution_effects"]["steps"][0]["row_delta"] == -1
+    assert (
+        first["execution_effects"]["result_sha256"]
+        == second["execution_effects"]["result_sha256"]
+    )
 
 
 def test_filter_derive_cast_sort_and_limit() -> None:
@@ -83,7 +87,7 @@ def test_dedupe_records_loss() -> None:
     )
 
     assert result["result"]["data"] == [{"id": 1, "v": "a"}, {"id": 2, "v": "c"}]
-    assert result["receipt"]["warnings"][0]["code"] == "W_ROWS_DEDUPED"
+    assert result["execution_effects"]["warnings"][0]["code"] == "W_ROWS_DEDUPED"
 
 
 def test_join_and_group_use_named_sources() -> None:

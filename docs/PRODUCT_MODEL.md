@@ -1,5 +1,8 @@
 # Product model
 
+BatchTicket is the product brand. Stable technical identifiers remain `adt`,
+`agent-data-transformer`, `data-transformer`, and the four `data_*` MCP tools.
+
 ## Users and tasks
 
 - A human developer or operator uses the CLI to inspect, reshape, validate, compare, and convert structured data without writing a one-off script.
@@ -21,7 +24,7 @@ Agent flow:
 known shape --------------------------> data_transform -> downstream tool
 unknown shape -> data_inspect ----------------^              |
 target schema -> candidates -> explicit mapping -> draft plan
-                                                   receipt + compact sample
+                                         execution effects + compact sample
 ```
 
 Validation and diff are independent entry points and can also be used after transformation.
@@ -34,7 +37,7 @@ Validation and diff are independent entry points and can also be used after tran
 - Python's standard JSON and CSV libraries own their standard formats.
 - The MCP Python SDK owns the transport.
 
-The product's original layer is the versioned Transformation Plan, safe expression AST, data-shape inspection, stable result and error contracts, change receipt, and token-aware return policy.
+The product's original layer is the versioned Transformation Plan, safe expression AST, data-shape inspection, stable result and error contracts, explicit execution effects, and token-aware return policy.
 
 ## One deterministic core
 

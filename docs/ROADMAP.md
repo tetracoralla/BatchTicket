@@ -1,15 +1,16 @@
-# Data Transformer delivery roadmap
+# BatchTicket delivery roadmap
 
 ## Target state
 
-Produce a locally installable release candidate of the Agent-native deterministic
+Produce a public-source-ready release candidate of the Agent-native deterministic
 structured-data runtime. The candidate keeps one core and the four public task tools,
 passes the current safety and carrier contract, is selected and used through a fresh
 Codex host within the route budget, and can deterministically compare a source shape
 with a target JSON Schema to produce an explicit draft Transformation Plan without
 guessing business meaning.
 
-External publication and the final business-value verdict remain owner decisions.
+Creating the public GitHub repository, pushing source, enabling repository security
+settings, tagging a release, and the final business-value verdict remain owner actions.
 
 ## Finish line
 
@@ -23,9 +24,10 @@ External publication and the final business-value verdict remain owner decisions
   explained, ambiguous or semantic choices remain unresolved, and any executable
   plan requires explicit mappings.
 - Complete serialized responses, side effects, cancellation, resource authority,
-  exactness, and loss receipts remain bounded and truthful.
+  exactness, and loss effects remain bounded and truthful.
 - A clean release-candidate package, checksum, current documentation, and rerunnable
-  validation commands are available locally. No external release is performed.
+  validation commands are available locally. Apache-2.0 source publication and distribution
+  of the self-contained binary are judged separately. No external release is performed.
 
 ## Current state
 
@@ -33,6 +35,9 @@ External publication and the final business-value verdict remain owner decisions
   optimization and final hardening changes on top of it.
 - Kernel hardening and its negative regressions are implemented in the existing core;
   the full current test collection passes.
+- The product brand is BatchTicket while stable technical identifiers remain unchanged.
+  Transform results expose first-party runtime observations as `execution_effects`; the
+  retired public key is rejected by regression and installed-bundle probes.
 - Nested record-set inspection and deterministic `record-schema-v1` adaptation are
   implemented inside `data_inspect`; ready drafts execute through `data_transform`.
 - The self-contained 0.2.0 release-candidate bundle is installed through the generated
@@ -54,6 +59,21 @@ External publication and the final business-value verdict remain owner decisions
 - Full cold-host token totals remain high and host-dependent (about 75k input for the
   read-only routes and 263k, mostly cached, for the final transform); this is recorded as
   an operational cost risk rather than hidden behind the one-call route result.
+- Public repository metadata, contribution/security guidance, CI, dependency updates,
+  dependency auditing, exact-license validation, and wheel/sdist inspection are defined in
+  current source. `docs/RELEASE_CHECKLIST.md` is the publication handoff.
+- Apache-2.0 source publication is the intended initial GitHub route. The self-contained
+  plugin archive remains explicitly blocked from public upload until its incorporated Python,
+  package, and native-library license materials are complete and mechanically checked.
+- Final preparation reran 159 tests on Python 3.11 and 3.14. A Python 3.14 warning exposed the
+  POSIX library's direct multithreaded `fork`; the default now uses `forkserver`, retains
+  `python -c` behavior, and passes both versions without that warning.
+- The final rebuilt and normally reinstalled macOS arm64 plugin executables match at SHA-256
+  `e8bdf2e234f66d5facb19ceb9bb3fd13a71d5077cb1ffb29b9d667aff29e963c`.
+- A fresh isolated host selected `data_validate` exactly once, passed the non-null and unique
+  assertions, and used no retry or generic fallback. The final publication rerun used 74,154
+  input tokens (54,528 cached); the host-dependent context cost remains a release risk rather
+  than a hidden success condition.
 
 ## Completed work map
 
@@ -64,22 +84,28 @@ External publication and the final business-value verdict remain owner decisions
 3. Record route/call/fallback/token evidence in `docs/ROUTING_EVAL.md`, verify archive
    checksum and repeatable/symlink-safe replacement, and inspect final artifact contents.
 4. Report development, Agent runtime, human runtime, and owner business/experience
-   acceptance independently. The owner authorized one local source commit for this review;
-   no external publication is authorized.
+   acceptance independently. Publication remains a separate, explicitly authorized action.
 
 ## Rerunnable validation
 
 ```bash
 uv run --frozen pytest -q
 uv run --frozen ruff check .
-uv build
 uv run --frozen python scripts/generate_plan_schema.py --check
+uv run --frozen python scripts/check_release_hygiene.py
+uv build
+uv run --frozen python scripts/check_release_artifacts.py
 uv run --frozen python scripts/build_plugin.py --output-root <temporary-directory>
 uv run --frozen python scripts/probe_plugin.py <built-plugin-directory>
 ```
 
-## Next owner action
+On macOS, standard temporary directories resolve through the `/var` system symlink,
+which the plugin build's symlink guard rejects; substitute the default `dist/plugin`
+output or another directory without symlinked components.
 
-After the authorized local source commit, review the four independent acceptance lanes and
-decide whether to publish, keep the candidate local for dogfood, or request another
-technical iteration. The commit does not imply external publication.
+## Publication boundary
+
+The reviewed Apache-2.0 source is published at `tetracoralla/BatchTicket`. No tag, GitHub
+Release, or self-contained plugin artifact is part of this source publication. The next owner
+decision is business/experience acceptance; public binary distribution remains blocked on the
+third-party license inventory described in `docs/RELEASE_CHECKLIST.md`.

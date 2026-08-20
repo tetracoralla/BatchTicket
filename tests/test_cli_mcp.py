@@ -26,9 +26,12 @@ def test_cli_transform_real_entrypoint() -> None:
     assert completed.returncode == 0
     assert result["status"] == "ok"
     assert result["summary"]["rows_out"] == 2
+    assert "receipt" not in result
+    assert "execution_effects" in result
 
 
 def test_mcp_registry_exposes_only_four_task_level_tools() -> None:
+    assert mcp.name == "BatchTicket"
     tools = mcp._tool_manager.list_tools()
     names = {tool.name for tool in tools}
 

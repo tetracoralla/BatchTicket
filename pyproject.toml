@@ -7,9 +7,22 @@ name = "agent-data-transformer"
 version = "0.2.0"
 description = "Deterministic, token-aware structured-data transformation runtime for agents"
 readme = "README.md"
+authors = [{ name = "openAdam" }]
 license = "Apache-2.0"
 license-files = ["LICENSE", "NOTICE"]
 requires-python = ">=3.11"
+keywords = ["agents", "data-transformation", "mcp", "structured-data"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Intended Audience :: Developers",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Programming Language :: Python :: 3.14",
+  "Programming Language :: Python :: 3 :: Only",
+  "Topic :: Software Development :: Libraries :: Python Modules",
+]
 dependencies = [
   "duckdb>=1.3,<2",
   "jsonschema>=4.23,<5",
@@ -21,7 +34,7 @@ dependencies = [
 [project.optional-dependencies]
 dev = [
   "pyinstaller>=6.16,<7",
-  "pytest>=8.3,<9",
+  "pytest>=9.0.3,<10",
   "pytest-cov>=6,<7",
   "ruff>=0.12,<1",
 ]
@@ -29,6 +42,12 @@ dev = [
 [project.scripts]
 adt = "data_transformer.cli:main"
 adt-mcp = "data_transformer.mcp_server:main"
+
+[project.urls]
+Homepage = "https://github.com/tetracoralla/BatchTicket"
+Repository = "https://github.com/tetracoralla/BatchTicket"
+Issues = "https://github.com/tetracoralla/BatchTicket/issues"
+Changelog = "https://github.com/tetracoralla/BatchTicket/blob/main/CHANGELOG.md"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/data_transformer"]

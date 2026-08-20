@@ -1,8 +1,12 @@
-# Agent Data Transformer
+# BatchTicket
 
-Agent Data Transformer (`adt`) is a deterministic structured-data transducer for Agent workflows. It replaces model-generated data搬运 with a versioned plan, bounded execution, compact results, and a change receipt.
+BatchTicket (CLI: `adt`) is a deterministic structured-data transducer for Agent workflows. Like the small ticket that travels with a production or shipping batch, each run carries a versioned plan and an explicit account of what execution changed. That account does not claim the mapping was semantically correct.
 
 It is not another jq or SQL dialect. DuckDB, JSON Schema, PyYAML, and standard parsers own established execution work. This project owns the Agent contract around them.
+
+Version 0.2.0 is an unreleased source release candidate. The project is licensed under the
+[Apache License 2.0](LICENSE). The stable technical identifiers remain
+`agent-data-transformer`, `data-transformer`, `adt`, and the four `data_*` MCP tools.
 
 ## What is implemented
 
@@ -15,7 +19,7 @@ It is not another jq or SQL dialect. DuckDB, JSON Schema, PyYAML, and standard p
 - Schema-aware keyed or unkeyed diff.
 - Dry-run with real destination preflight, staged atomic publication, and overwrite protection.
 - Whole-call worker isolation with cumulative source/byte/row/item/depth/time/RSS/temp limits.
-- A byte ceiling over the complete serialized response, including samples, shapes, receipts, diffs, validation failures, and errors.
+- A byte ceiling over the complete serialized response, including samples, shapes, execution effects, diffs, validation failures, and errors.
 - One strict typed Plan v1 model generates runtime validation, the published JSON Schema, and the live MCP schema.
 - One shared core with CLI and four task-level MCP tools.
 
@@ -24,7 +28,9 @@ It is not another jq or SQL dialect. DuckDB, JSON Schema, PyYAML, and standard p
 Development checkout:
 
 ```bash
-uv sync --extra dev
+git clone https://github.com/tetracoralla/BatchTicket.git
+cd BatchTicket
+uv sync --frozen --extra dev
 uv run adt inspect examples/users.json --select 'data.users[*]'
 uv run adt inspect examples/users.json --select 'data.users[*]' \
   --target-schema target.schema.json --mappings mappings.json
@@ -53,7 +59,13 @@ its bundled executable directly. The generated local marketplace points Codex at
 self-contained directory. Rebuilding with `--replace` refuses symlinked output roots or
 generated targets before deleting or overwriting anything.
 
-The example transformation returns two records inline and reports that one input row was removed. File output is opt-in through `output.path`; existing files are never replaced unless `output.overwrite` is explicitly true.
+The generated self-contained bundle is currently a **local validation artifact**, not a public
+release asset. It incorporates a Python runtime, Python packages, and native libraries whose
+third-party license materials are not yet assembled into the archive. Do not upload the plugin
+directory, archive, or checksum to a GitHub Release. This does not restrict publishing or using
+the Apache-2.0 source repository; see the [release checklist](docs/RELEASE_CHECKLIST.md).
+
+The example transformation returns two records inline and reports through `execution_effects` that one input row was removed. File output is opt-in through `output.path`; existing files are never replaced unless `output.overwrite` is explicitly true.
 
 CLI paths are explicit user paths and may be absolute. MCP file paths are a narrower
 capability: the server first uses workspaces granted through the MCP roots protocol. A
@@ -104,6 +116,9 @@ result = DataTransformer().transform(
 )
 ```
 
-Public calls return `status: ok`, `status: dry_run`, or `status: error` with a stable `error.code`. They do not leak stack traces or DuckDB internals.
+Public calls return `status: ok`, `status: dry_run`, or `status: error` with a stable `error.code`. Successful transformations expose runtime-observed changes under `execution_effects`; they do not leak stack traces or DuckDB internals.
 
-See [the product model](docs/PRODUCT_MODEL.md) and [Transformation Plan v1](docs/TRANSFORMATION_IR.md).
+See [the product model](docs/PRODUCT_MODEL.md), [Transformation Plan v1](docs/TRANSFORMATION_IR.md),
+and the [review contract](docs/REVIEW_CONTRACT.md). Contributions are described in
+[CONTRIBUTING.md](CONTRIBUTING.md), security reports in [SECURITY.md](SECURITY.md), and notable
+changes in [CHANGELOG.md](CHANGELOG.md).

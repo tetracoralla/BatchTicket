@@ -9,3 +9,7 @@ build/
 .coverage*
 htmlcov/
 probe_users.json
+.DS_Store
+*.pem
+*.key
+.batchticket-plugin-build/

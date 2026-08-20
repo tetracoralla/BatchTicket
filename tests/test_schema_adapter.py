@@ -51,7 +51,7 @@ def test_schema_adapter_builds_executable_plan_only_from_explicit_mappings() -> 
     executed = transformer.transform(plan)
     assert executed["status"] == "ok"
     assert executed["result"]["data"] == [{"name": "A", "user_id": 1}]
-    assert executed["receipt"]["schema_validation"]["status"] == "passed"
+    assert executed["execution_effects"]["schema_validation"]["status"] == "passed"
 
 
 def test_schema_adapter_selects_one_structurally_unique_nested_record_set() -> None:
