@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import re
 import subprocess
 import tomllib
@@ -23,6 +24,14 @@ REQUIRED_PUBLIC_FILES = {
     "README.md",
     "SECURITY.md",
     "docs/RELEASE_CHECKLIST.md",
+}
+FORBIDDEN_PUBLIC_PATH_PREFIXES = {
+    "docs/progress/",
+    "docs/review-evidence/",
+    "docs/session-records/",
+}
+FORBIDDEN_PUBLIC_PATHS = {
+    "docs/ROUTING_EVAL.md",
 }
 SECRET_PATTERNS = {
     "private key": re.compile(r"-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----"),
@@ -68,6 +77,12 @@ def _is_forbidden_release_path(raw_path: str) -> bool:
     )
 
 
+def _is_public_agent_trace_path(raw_path: str) -> bool:
+    return raw_path in FORBIDDEN_PUBLIC_PATHS or any(
+        raw_path.startswith(prefix) for prefix in FORBIDDEN_PUBLIC_PATH_PREFIXES
+    )
+
+
 def _release_refs() -> list[str]:
     if not (REPO_ROOT / ".git").exists():
         return []
@@ -88,10 +103,21 @@ def _check_paths() -> list[str]:
 
     if not (REPO_ROOT / ".git").exists():
         return failures
-    tracked = [path for path in _git("ls-files").splitlines() if path]
+    tracked = [
+        path
+        for path in _git("ls-files").splitlines()
+        if path and (REPO_ROOT / path).exists()
+    ]
     forbidden = sorted(path for path in tracked if _is_forbidden_release_path(path))
     if forbidden:
         failures.append(f"forbidden paths are tracked: {', '.join(forbidden)}")
+    agent_trace_paths = sorted(
+        path for path in tracked if _is_public_agent_trace_path(path)
+    )
+    if agent_trace_paths:
+        failures.append(
+            "public Agent trace paths are tracked: " + ", ".join(agent_trace_paths)
+        )
 
     refs = _release_refs()
     if refs:
@@ -122,6 +148,12 @@ def _check_metadata() -> list[str]:
         failures.append("project license expression must be Apache-2.0")
     if set(project.get("license-files", [])) != {"LICENSE", "NOTICE"}:
         failures.append("project license-files must contain LICENSE and NOTICE")
+    author_names = {author.get("name") for author in project.get("authors", [])}
+    if "openAdam" not in author_names:
+        failures.append("project authors must include openAdam")
+    notice = (REPO_ROOT / "NOTICE").read_text(encoding="utf-8")
+    if "Copyright 2026 openAdam" not in notice:
+        failures.append("NOTICE must identify openAdam as the copyright owner")
     urls = project.get("urls", {})
     if urls.get("Repository") != CANONICAL_REPOSITORY:
         failures.append("project Repository URL does not match the planned public repository")
@@ -133,11 +165,17 @@ def _check_metadata() -> list[str]:
     if match is None or match.group(1) != project.get("version"):
         failures.append("package __version__ does not match pyproject.toml")
 
-    plugin = (REPO_ROOT / ".codex-plugin/plugin.json").read_text(encoding="utf-8")
-    if f'"version": "{project.get("version")}"' not in plugin:
+    plugin = json.loads(
+        (REPO_ROOT / ".codex-plugin/plugin.json").read_text(encoding="utf-8")
+    )
+    if plugin.get("version") != project.get("version"):
         failures.append("plugin version does not match pyproject.toml")
-    if '"displayName": "BatchTicket"' not in plugin:
+    if plugin.get("interface", {}).get("displayName") != "BatchTicket":
         failures.append("plugin display name is not BatchTicket")
+    if plugin.get("author", {}).get("name") != "openAdam":
+        failures.append("plugin author must be openAdam")
+    if plugin.get("interface", {}).get("developerName") != "openAdam":
+        failures.append("plugin developerName must be openAdam")
     return failures
 
 
@@ -181,6 +219,24 @@ def _check_current_secrets() -> list[str]:
         for label, pattern in SECRET_PATTERNS.items():
             if pattern.search(content):
                 failures.append(f"possible {label} in {raw_path}")
+    return failures
+
+
+def _check_public_agent_traces() -> list[str]:
+    failures: list[str] = []
+    patterns = {
+        "Agent session source marker": re.compile(r"(?im)^source:\s*(?:codex|claude)\s*$"),
+        "host token evidence": re.compile(r"(?i)host token evidence|\binput tokens?\b"),
+        "ephemeral Agent session": re.compile(r"(?i)fresh isolated codex|ephemeral codex session"),
+    }
+    for path in sorted((REPO_ROOT / "docs").rglob("*.md")):
+        content = path.read_text(encoding="utf-8")
+        for label, pattern in patterns.items():
+            if pattern.search(content):
+                failures.append(
+                    f"{label} must not be tracked in public docs: "
+                    + path.relative_to(REPO_ROOT).as_posix()
+                )
     return failures
 
 
@@ -228,6 +284,7 @@ def main() -> None:
         + _check_metadata()
         + _check_workflows()
         + _check_current_secrets()
+        + _check_public_agent_traces()
         + _check_release_history_secrets()
     )
     if failures:
