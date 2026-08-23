@@ -42,6 +42,8 @@ dev = [
 [project.scripts]
 adt = "data_transformer.cli:main"
 adt-mcp = "data_transformer.mcp_server:main"
+adt-capability = "data_transformer.capability_adapter:main"
+adt-transport-schema-probe = "data_transformer.transport_schema_probe:main"
 
 [project.urls]
 Homepage = "https://github.com/tetracoralla/BatchTicket"
@@ -54,6 +56,7 @@ packages = ["src/data_transformer"]
 
 [tool.hatch.build.targets.wheel.force-include]
 "schemas" = "data_transformer/schemas"
+"capabilities/schemas" = "data_transformer/capability_schemas"
 
 [tool.hatch.build.targets.sdist]
 exclude = [".coverage*", "probe_users.json"]

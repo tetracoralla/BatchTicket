@@ -1,0 +1,73 @@
+{
+  "schemaVersion": "openadam.provider-manifest.v0.2",
+  "provider": {
+    "id": "io.github.tetracoralla.batchticket",
+    "name": "BatchTicket",
+    "version": "0.2.0",
+    "homepage": "https://github.com/tetracoralla/BatchTicket"
+  },
+  "implementations": [
+    {
+      "capabilityId": "org.openadam.structured-data.analyze",
+      "capabilityVersion": "0.1.0",
+      "adapter": {
+        "protocol": "openadam.capability-jsonl.v0.1",
+        "command": "uv",
+        "args": ["run", "--offline", "python", "-m", "data_transformer.capability_adapter"]
+      },
+      "adapterBindings": [
+        {
+          "operationId": "inspect",
+          "target": "python:data_transformer.capability_adapter#inspect"
+        },
+        {
+          "operationId": "validate",
+          "target": "python:data_transformer.capability_adapter#validate"
+        }
+      ],
+      "transportSchemaProbe": {
+        "protocol": "openadam.transport-schema-jsonl.v0.1",
+        "command": "uv",
+        "args": ["run", "--offline", "python", "-m", "data_transformer.transport_schema_probe"]
+      },
+      "bindings": [
+        {
+          "operationId": "inspect",
+          "transport": "mcp-tool",
+          "target": "data_inspect",
+          "contractSchemaDigests": {
+            "input": "sha256:255ea49fc0b4dec2db1d79a6b986147d954e1940a99ec39af149831d141e426e",
+            "output": "sha256:e8327fb1cc0363506a330bfa6fe731deb5f0465f8f363e37c0e348295a582bbf"
+          },
+          "transportSchemaDigests": {
+            "input": "sha256:74126d465e3a8eed83087732e8395a530bdb734240c0531c7c0f598cbcebf691"
+          },
+          "annotations": {
+            "readOnlyHint": true,
+            "destructiveHint": false,
+            "idempotentHint": true,
+            "openWorldHint": false
+          }
+        },
+        {
+          "operationId": "validate",
+          "transport": "mcp-tool",
+          "target": "data_validate",
+          "contractSchemaDigests": {
+            "input": "sha256:2d10292339e9f5607aeb9fb3355fc41e81607fdeb5435ada3a52ca01d03fbc94",
+            "output": "sha256:4f7a753ba8ced15b06d204fa4e82596eba61fcd5face57244c0882e5069b2b4d"
+          },
+          "transportSchemaDigests": {
+            "input": "sha256:a91a45fa873f7e0cf27aee1227f29894eef62440818c39033a6e2900d641afba"
+          },
+          "annotations": {
+            "readOnlyHint": true,
+            "destructiveHint": false,
+            "idempotentHint": true,
+            "openWorldHint": false
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -98,6 +98,27 @@ path or fifth public tool.
 
 ## Library API
 
+### Portable Capability provider
+
+`capabilities/provider.json` binds the read-only `data_inspect` and
+`data_validate` core paths to
+`org.openadam.structured-data.analyze@0.1.0`. The JSONL adapter validates the
+portable request, preserves the same restricted workspace and isolated worker,
+and projects provider results into the canonical shape and validation
+contracts. A failed content constraint remains a successful result with
+`valid=false`; malformed constraints and execution failures use stable
+Capability errors.
+
+The v0.2 Provider Manifest declares canonical JSONL adapter targets for
+`inspect` and `validate` separately from the public FastMCP tool targets. Its
+executable transport schema probe introspects the current `data_inspect` and
+`data_validate` tool schemas, keeping canonical adapter and live transport
+conformance as separate evidence lanes.
+
+Installed source wheels expose `adt-capability` and
+`adt-transport-schema-probe`. Their canonical schemas are package resources,
+so neither command depends on a repository checkout or a sibling Procedure.
+
 ```python
 from data_transformer import DataTransformer
 

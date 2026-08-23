@@ -1,0 +1,99 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:openadam:capability:structured-data.validate:v0.1:input",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["source"],
+  "properties": {
+    "source": { "$ref": "#/$defs/source" },
+    "schema": { "type": "object", "minProperties": 1 },
+    "assertions": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 1000,
+      "items": { "$ref": "#/$defs/assertion" }
+    },
+    "sample_rows": { "type": "integer", "minimum": 0, "maximum": 100, "default": 5 },
+    "limits": { "$ref": "#/$defs/limits" }
+  },
+  "anyOf": [{ "required": ["schema"] }, { "required": ["assertions"] }],
+  "$defs": {
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path"],
+      "properties": {
+        "path": { "type": "string", "minLength": 1, "maxLength": 4096 },
+        "format": { "enum": ["json", "jsonl", "csv", "tsv", "yaml", "parquet"] },
+        "select": { "type": "string", "minLength": 1, "maxLength": 4096 },
+        "kind": { "enum": ["tree", "table"] }
+      }
+    },
+    "assertion": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type", "field"],
+          "properties": {
+            "id": { "type": "string", "minLength": 1, "maxLength": 200 },
+            "type": { "enum": ["field_exists", "not_null"] },
+            "field": { "type": "string", "minLength": 1, "maxLength": 4096 }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type"],
+          "properties": {
+            "id": { "type": "string", "minLength": 1, "maxLength": 200 },
+            "type": { "const": "unique" },
+            "field": { "type": "string", "minLength": 1, "maxLength": 4096 },
+            "fields": {
+              "type": "array",
+              "minItems": 1,
+              "items": { "type": "string", "minLength": 1, "maxLength": 4096 }
+            }
+          },
+          "oneOf": [{ "required": ["field"] }, { "required": ["fields"] }]
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type"],
+          "properties": {
+            "id": { "type": "string", "minLength": 1, "maxLength": 200 },
+            "type": { "const": "row_count" },
+            "eq": { "type": "integer", "minimum": 0 },
+            "min": { "type": "integer", "minimum": 0 },
+            "max": { "type": "integer", "minimum": 0 }
+          },
+          "anyOf": [{ "required": ["eq"] }, { "required": ["min"] }, { "required": ["max"] }]
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type", "field", "is"],
+          "properties": {
+            "id": { "type": "string", "minLength": 1, "maxLength": 200 },
+            "type": { "const": "type" },
+            "field": { "type": "string", "minLength": 1, "maxLength": 4096 },
+            "is": { "type": "string", "minLength": 1, "maxLength": 100 }
+          }
+        }
+      ]
+    },
+    "limits": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "max_input_bytes": { "type": "integer", "minimum": 1 },
+        "max_rows": { "type": "integer", "minimum": 1 },
+        "max_items": { "type": "integer", "minimum": 1 },
+        "max_depth": { "type": "integer", "minimum": 1 },
+        "timeout_ms": { "type": "integer", "minimum": 1, "maximum": 60000 },
+        "max_response_bytes": { "type": "integer", "minimum": 4096, "maximum": 1048576 }
+      }
+    }
+  }
+}

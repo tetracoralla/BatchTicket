@@ -12,6 +12,7 @@ from urllib.request import url2pathname
 
 import anyio
 from mcp.server.fastmcp import Context, FastMCP
+from mcp.server.fastmcp.server import Settings as FastMCPSettings
 from mcp.server.stdio import stdio_server
 from mcp.shared.exceptions import McpError
 from mcp.types import CallToolResult, TextContent
@@ -26,6 +27,8 @@ from .errors import DataTransformerError
 from .json_values import canonical_json
 from .limits import Limits
 from .runtime import DataTransformer
+
+FastMCPSettings.model_rebuild()
 
 mcp = FastMCP(
     "BatchTicket",
