@@ -41,21 +41,17 @@ When updating the public repository, push only the reviewed branch or tag. Do no
 
 ## Prebuilt plugin binary gate
 
-**Current status: NO-GO for public upload.** The PyInstaller bundle contains a Python runtime,
-Python packages, and platform-native libraries. The local `LICENSE` and `NOTICE` cover this
-project, not every incorporated third-party work.
+The macOS arm64 builder emits a self-contained plugin with complete copied license texts,
+`legal/THIRD_PARTY_NOTICES.md`, and a CycloneDX 1.5 SBOM. The legal inventory covers the locked
+Python runtime dependency closure, PyInstaller bootloader, CPython runtime, and the native
+libraries carried with that runtime. Build and probe checks verify those files in the copied
+directory and generated archive; the archive has normalized order, ownership, timestamps, and
+gzip metadata for repeatable SHA-256 output from the same source, lock, and build environment.
 
-Local builds and probes may continue, but do not attach the generated plugin directory, archive,
-or checksum to a GitHub Release until all of the following are implemented and reviewed on every
-target platform:
-
-- complete third-party license and notice collection for Python, PyInstaller, Python packages,
-  OpenSSL, compression/decimal libraries, and other bundled native code;
-- a manifest tying each shipped component to its version, source, license, and included notice;
-- a mechanical artifact check proving those files are present in both the directory and archive;
-- a platform-specific legal/license review of the final bundle contents.
-
-This restriction does not block publishing the source repository or building the plugin locally.
+This does not authorize publication. Before attaching an artifact to a GitHub Release, separately
+authorize the upload and review the exact target-platform archive, source/lock versions, checksum,
+and any required signing/notarization policy. A macOS arm64 artifact makes no claim about another
+platform.
 
 Record transient validation evidence outside the tracked source tree. Public documentation
 states the durable commands, contracts, and distribution boundary; it must not become a log of

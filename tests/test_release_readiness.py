@@ -20,11 +20,12 @@ def test_all_public_version_surfaces_match() -> None:
     assert plugin["interface"]["developerName"] == "openAdam"
 
 
-def test_binary_release_remains_explicitly_blocked_until_notices_are_complete() -> None:
+def test_binary_release_materials_and_authorization_boundary_are_explicit() -> None:
     checklist = Path("docs/RELEASE_CHECKLIST.md").read_text(encoding="utf-8")
 
-    assert "Current status: NO-GO for public upload" in checklist
-    assert "complete third-party license and notice collection" in checklist
+    assert "legal/THIRD_PARTY_NOTICES.md" in checklist
+    assert "CycloneDX 1.5 SBOM" in checklist
+    assert "This does not authorize publication" in checklist
 
 
 def test_remote_github_actions_are_pinned_to_full_commit_shas() -> None:

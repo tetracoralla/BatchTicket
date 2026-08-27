@@ -1,5 +1,5 @@
 {
-  "schemaVersion": "openadam.provider-manifest.v0.2",
+  "schemaVersion": "openadam.provider-manifest.v0.3",
   "provider": {
     "id": "io.github.tetracoralla.batchticket",
     "name": "BatchTicket",
@@ -10,6 +10,7 @@
     {
       "capabilityId": "org.openadam.structured-data.analyze",
       "capabilityVersion": "0.1.0",
+      "profileDigest": "sha256:88f2495b64c1eb2a33b9332ef2d973ac62adf3621a44bdf75a27e6b12ec87b79",
       "adapter": {
         "protocol": "openadam.capability-jsonl.v0.1",
         "command": "uv",

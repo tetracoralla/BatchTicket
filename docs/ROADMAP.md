@@ -22,8 +22,8 @@ executable schemas and source; acceptance invariants live in `docs/REVIEW_CONTRA
   compatibility grant where roots are unavailable.
 - Expand carrier-equivalence and hostile-input coverage as new formats or operations are
   proposed.
-- Complete the component manifest and third-party license inventory required before any
-  self-contained plugin binary is publicly distributed.
+- Keep the generated component manifest, copied license texts, and SBOM aligned with the locked
+  runtime closure whenever a self-contained plugin is rebuilt.
 
 ## Deliberate non-goals
 
@@ -53,5 +53,5 @@ output or another directory without symlinked components.
 
 The Apache-2.0 source is published at `tetracoralla/BatchTicket`. Source publication does not
 authorize a tag, GitHub Release, package-registry upload, or self-contained plugin asset.
-Public binary distribution remains blocked on the third-party inventory described in
-`docs/RELEASE_CHECKLIST.md`.
+Public binary distribution requires a separate owner authorization and target-platform review
+described in `docs/RELEASE_CHECKLIST.md`.

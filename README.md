@@ -59,11 +59,15 @@ its bundled executable directly. The generated local marketplace points Codex at
 self-contained directory. Rebuilding with `--replace` refuses symlinked output roots or
 generated targets before deleting or overwriting anything.
 
-The generated self-contained bundle is currently a **local validation artifact**, not a public
-release asset. It incorporates a Python runtime, Python packages, and native libraries whose
-third-party license materials are not yet assembled into the archive. Do not upload the plugin
-directory, archive, or checksum to a GitHub Release. This does not restrict publishing or using
-the Apache-2.0 source repository; see the [release checklist](docs/RELEASE_CHECKLIST.md).
+Each generated bundle contains `legal/THIRD_PARTY_NOTICES.md`, the copied license texts under
+`legal/licenses/`, and `legal/sbom.cdx.json`. The inventory is built from the locked runtime
+dependency closure plus the incorporated CPython runtime and PyInstaller bootloader; it is checked
+again from the archive by the plugin test path. The archive is stable for the same source, lock,
+and build environment, so its companion SHA-256 file identifies the exact generated bundle.
+
+This local macOS arm64 artifact is not a publication action. A GitHub Release upload, code-signing
+or notarization decision still requires separate authorization; see the
+[release checklist](docs/RELEASE_CHECKLIST.md).
 
 The example transformation returns two records inline and reports through `execution_effects` that one input row was removed. File output is opt-in through `output.path`; existing files are never replaced unless `output.overwrite` is explicitly true.
 
