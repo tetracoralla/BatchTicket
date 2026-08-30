@@ -181,7 +181,9 @@ def test_mcp_stdio_activation_and_real_tool_call() -> None:
                 },
             )
             assert invalid.isError is True
-            assert invalid.structuredContent is None
+            assert invalid.structuredContent["status"] == "error"
+            assert invalid.structuredContent["error"]["code"] == "E_EXPRESSION_INVALID"
+            assert invalid.structuredContent["error"]["details"]["path"]
 
     asyncio.run(exercise())
 

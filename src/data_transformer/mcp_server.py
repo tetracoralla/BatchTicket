@@ -157,7 +157,15 @@ async def data_transform(
         "E_CONDITION_INVALID",
         "E_EXPRESSION_INVALID",
     }:
-        raise ValueError(result["error"]["message"])
+        # Caller-construction failures stay protocol-level tool errors, but they
+        # must still carry the stable code and bounded details instead of a bare
+        # message string.
+        bounded = _bounded_mcp_result("transform", result, _plan_response_limit(plan))
+        return CallToolResult(
+            content=bounded.content,
+            structuredContent=bounded.structuredContent,
+            isError=True,
+        )
     return _bounded_mcp_result("transform", result, _plan_response_limit(plan))
 
 
