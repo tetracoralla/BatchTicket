@@ -6,26 +6,33 @@ import threading
 from _thread import LockType
 from io import TextIOWrapper
 from pathlib import Path
-from typing import Any
+from typing import Annotated, Any
 from urllib.parse import urlsplit
 from urllib.request import url2pathname
 
 import anyio
 from mcp.server.fastmcp import Context, FastMCP
+from mcp.server.fastmcp.server import Settings as FastMCPSettings
 from mcp.server.stdio import stdio_server
 from mcp.shared.exceptions import McpError
 from mcp.types import CallToolResult, TextContent
 
 from .contracts import (
+    DiffMcpOutput,
     DiffToolInput,
+    InspectMcpOutput,
     InspectToolInput,
+    TransformMcpOutput,
     TransformToolInput,
+    ValidateMcpOutput,
     ValidateToolInput,
 )
 from .errors import DataTransformerError
 from .json_values import canonical_json
 from .limits import Limits
 from .runtime import DataTransformer
+
+FastMCPSettings.model_rebuild()
 
 mcp = FastMCP(
     "BatchTicket",
@@ -37,6 +44,11 @@ mcp = FastMCP(
 )
 
 _MCP_INLINE_TEXT_MAX_BYTES = 4096
+
+InspectMcpResult = Annotated[CallToolResult, InspectMcpOutput]
+TransformMcpResult = Annotated[CallToolResult, TransformMcpOutput]
+ValidateMcpResult = Annotated[CallToolResult, ValidateMcpOutput]
+DiffMcpResult = Annotated[CallToolResult, DiffMcpOutput]
 
 
 @mcp.tool(
@@ -64,7 +76,11 @@ async def data_inspect(
     limits: Any = None,
     workspace: Any = None,
     ctx: Context | None = None,
-) -> CallToolResult:
+) -> InspectMcpResult:
+    source = _transport_value(source)
+    target_schema = _transport_value(target_schema)
+    mappings = _transport_value(mappings)
+    limits = _transport_value(limits)
     cancel_event = threading.Event()
     cancel_lock = threading.Lock()
     transformer = await _transformer_for_call(
@@ -117,7 +133,8 @@ async def data_transform(
     dry_run: Any = None,
     workspace: Any = None,
     ctx: Context | None = None,
-) -> CallToolResult:
+) -> TransformMcpResult:
+    plan = _transport_value(plan)
     cancel_event = threading.Event()
     cancel_lock = threading.Lock()
     transformer = await _transformer_for_call(
@@ -140,7 +157,15 @@ async def data_transform(
         "E_CONDITION_INVALID",
         "E_EXPRESSION_INVALID",
     }:
-        raise ValueError(result["error"]["message"])
+        # Caller-construction failures stay protocol-level tool errors, but they
+        # must still carry the stable code and bounded details instead of a bare
+        # message string.
+        bounded = _bounded_mcp_result("transform", result, _plan_response_limit(plan))
+        return CallToolResult(
+            content=bounded.content,
+            structuredContent=bounded.structuredContent,
+            isError=True,
+        )
     return _bounded_mcp_result("transform", result, _plan_response_limit(plan))
 
 
@@ -169,7 +194,11 @@ async def data_validate(
     limits: Any = None,
     workspace: Any = None,
     ctx: Context | None = None,
-) -> CallToolResult:
+) -> ValidateMcpResult:
+    source = _transport_value(source)
+    schema = _transport_value(schema)
+    assertions = _transport_value(assertions)
+    limits = _transport_value(limits)
     cancel_event = threading.Event()
     cancel_lock = threading.Lock()
     transformer = await _transformer_for_call(
@@ -217,7 +246,10 @@ async def data_diff(
     limits: Any = None,
     workspace: Any = None,
     ctx: Context | None = None,
-) -> CallToolResult:
+) -> DiffMcpResult:
+    left = _transport_value(left)
+    right = _transport_value(right)
+    limits = _transport_value(limits)
     cancel_event = threading.Event()
     cancel_lock = threading.Lock()
     transformer = await _transformer_for_call(
@@ -277,6 +309,24 @@ def _response_limit(raw: Any) -> int:
         ):
             return requested
     return Limits.max_response_bytes
+
+
+def _transport_value(value: Any) -> Any:
+    """Dump FastMCP's typed arguments back to the core's JSON carrier.
+
+    The core deliberately accepts ordinary Python dictionaries so its CLI and
+    library adapters keep their existing behavior.  This MCP-only conversion
+    gives tools/list a closed, executable catalog without adding a second
+    transformation implementation.
+    """
+    model_dump = getattr(value, "model_dump", None)
+    if callable(model_dump):
+        return model_dump(mode="python", by_alias=True, exclude_none=True)
+    if isinstance(value, list):
+        return [_transport_value(item) for item in value]
+    if isinstance(value, dict):
+        return {key: _transport_value(item) for key, item in value.items()}
+    return value
 
 
 def _plan_response_limit(plan: Any) -> int:
@@ -624,6 +674,17 @@ def _install_public_tool_schemas() -> None:
     }
     for tool in mcp._tool_manager.list_tools():
         tool.parameters = models[tool.name].model_json_schema(by_alias=True)
+        output_schema = tool.fn_metadata.output_schema
+        if output_schema is None:  # pragma: no cover - each public tool is typed above.
+            raise RuntimeError(f"public tool is missing an output contract: {tool.name}")
+        # RootModel emits a root ``anyOf`` for the strict success/error union.
+        # All branches are objects, and the MCP SDK requires that fact to be
+        # explicit at the schema root before it will accept tools/list.
+        object.__setattr__(
+            tool.fn_metadata,
+            "output_schema",
+            {**output_schema, "type": "object"},
+        )
         # FastMCP otherwise attempts json.loads() on string-valued non-string
         # arguments before calling the handler. Public schemas require objects,
         # so keep those strings opaque and let the isolated worker reject them.

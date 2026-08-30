@@ -7,7 +7,7 @@ from typing import Any
 from .dataset import DataSet
 from .errors import DataTransformerError
 from .json_values import json_safe
-from .workspace import INTERNAL_ORDER, Workspace, quote_identifier
+from .workspace import INTERNAL_ORDER, Workspace, _tree_type, quote_identifier
 
 
 def diff_datasets(
@@ -227,8 +227,8 @@ def _iter_tree_diff(left: Any, right: Any, path: str) -> Iterator[dict[str, Any]
         yield {
             "path": path,
             "change": "type",
-            "from": type(left).__name__,
-            "to": type(right).__name__,
+            "from": _tree_type(left),
+            "to": _tree_type(right),
         }
         return
     if isinstance(left, dict):

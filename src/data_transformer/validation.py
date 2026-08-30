@@ -238,7 +238,14 @@ def _evaluate_table_assertion(
             "timestamp": "timestamp",
         }
         normalized_expected = aliases.get(expected.lower(), expected.lower())
-        passed = actual == expected.lower() or actual_family == normalized_expected
+        # A parameterized exact type such as DECIMAL(2,1) satisfies its
+        # unparameterized name, while the family alias still accepts storage
+        # variants (for example "number" covering DECIMAL and DOUBLE).
+        passed = (
+            actual == normalized_expected
+            or actual.startswith(f"{normalized_expected}(")
+            or actual_family == normalized_expected
+        )
         return {
             "status": "passed" if passed else "failed",
             "field": field,

@@ -11,6 +11,7 @@ from pydantic import (
     TypeAdapter,
     model_validator,
 )
+from typing_extensions import TypeAliasType
 
 from .limits import Limits
 
@@ -18,6 +19,15 @@ Identifier = Annotated[str, StringConstraints(pattern=r"^[A-Za-z_][A-Za-z0-9_-]*
 NonEmptyString = Annotated[str, StringConstraints(min_length=1)]
 DataFormat = Literal["json", "jsonl", "csv", "tsv", "yaml", "parquet"]
 DataKind = Literal["tree", "table"]
+
+# Public MCP input and output are JSON values.  Keeping this recursive alias in
+# the executable contract makes arbitrary structured data explicit without
+# advertising Python objects or an unconstrained ``Any`` shape to a host.
+JsonValue = TypeAliasType(
+    "JsonValue",
+    str | int | float | bool | None | list["JsonValue"] | dict[str, "JsonValue"],
+)
+JsonObject: TypeAlias = dict[str, JsonValue]
 
 
 class StrictModel(BaseModel):
@@ -453,6 +463,104 @@ class DiffToolInput(StrictModel):
 
 
 class SourceContract(RootModel[Source]):
+    pass
+
+
+class McpErrorDetails(StrictModel):
+    code: NonEmptyString
+    message: NonEmptyString
+    step_id: Identifier | None = None
+    details: JsonObject | None = None
+
+
+class InspectMcpSuccess(StrictModel):
+    status: Literal["ok"]
+    operation: Literal["inspect"]
+    source: JsonObject
+    shape: JsonObject
+    sample: JsonValue | None = None
+    adaptation: JsonObject | None = None
+
+
+class InspectMcpError(StrictModel):
+    status: Literal["error"]
+    operation: Literal["inspect"]
+    error: McpErrorDetails
+
+
+class InspectMcpOutput(RootModel[InspectMcpSuccess | InspectMcpError]):
+    pass
+
+
+class TransformMcpSuccess(StrictModel):
+    status: Literal["ok", "dry_run"]
+    operation: Literal["transform"]
+    result: JsonObject
+    summary: JsonObject
+    sample: JsonValue
+    execution_effects: JsonObject
+
+
+class TransformMcpError(StrictModel):
+    status: Literal["error"]
+    operation: Literal["transform"]
+    error: McpErrorDetails
+
+
+class TransformMcpOutput(RootModel[TransformMcpSuccess | TransformMcpError]):
+    pass
+
+
+class ValidateMcpSuccess(StrictModel):
+    status: Literal["ok"]
+    operation: Literal["validate"]
+    valid: bool
+    shape: JsonObject
+    schema_validation: JsonObject | None = None
+    assertions: list[JsonObject]
+    sample: JsonValue
+
+
+class ValidateMcpError(StrictModel):
+    status: Literal["error"]
+    operation: Literal["validate"]
+    error: McpErrorDetails
+
+
+class ValidateMcpOutput(RootModel[ValidateMcpSuccess | ValidateMcpError]):
+    pass
+
+
+class DiffMcpSuccess(StrictModel):
+    status: Literal["ok"]
+    operation: Literal["diff"]
+    identical: bool
+    # Tree and table differences deliberately have different bounded payloads.
+    # The outer object stays closed; these values retain only JSON data because
+    # their field names are data-derived (input columns and JSON Pointer paths).
+    kind_change: JsonObject | None = None
+    row_comparison: Literal["not_comparable"] | None = None
+    changes: list[JsonObject] | None = None
+    changes_truncated: bool | None = None
+    scan_truncated: bool | None = None
+    change_count: int | None = None
+    count_lower_bound: int | None = None
+    left_rows: int | None = None
+    right_rows: int | None = None
+    schema_: JsonObject | None = Field(default=None, alias="schema")
+    added_rows: int | None = None
+    removed_rows: int | None = None
+    changed_rows: int | None = None
+    sample: list[JsonObject] | None = None
+
+
+class DiffMcpError(StrictModel):
+    status: Literal["error"]
+    operation: Literal["diff"]
+    error: McpErrorDetails
+
+
+class DiffMcpOutput(RootModel[DiffMcpSuccess | DiffMcpError]):
     pass
 
 

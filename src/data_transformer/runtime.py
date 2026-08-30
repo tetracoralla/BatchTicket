@@ -26,6 +26,7 @@ from .json_values import canonical_json, json_safe, json_size, normalize_source_
 from .limits import Limits
 from .operations import OperationExecutor
 from .output import (
+    check_output_feasibility,
     preflight_output,
     publish_staged_output,
     reserve_staging_output,
@@ -347,8 +348,13 @@ class DataTransformer:
             final_shape = workspace.shape(final, include_quality=True)
             sample = self._sample(workspace, final, active_limits.sample_rows)
             output_reference = None
-            if "output" in plan and not is_dry_run:
-                output_reference = write_output(workspace, final, plan["output"], self.base_dir)
+            if "output" in plan:
+                output_format = infer_format(
+                    Path(plan["output"]["path"]), plan["output"].get("format")
+                )
+                check_output_feasibility(workspace, final, output_format)
+                if not is_dry_run:
+                    output_reference = write_output(workspace, final, plan["output"], self.base_dir)
 
             inline, inline_fits = self._inline_value(
                 workspace, final, active_limits.max_inline_bytes
@@ -359,7 +365,7 @@ class DataTransformer:
                     "result exceeds max_inline_bytes",
                     {"maximum": active_limits.max_inline_bytes},
                 )
-            if mode == "auto" and output_reference is None and not inline_fits:
+            if mode == "auto" and "output" not in plan and not inline_fits:
                 raise DataTransformerError(
                     "E_OUTPUT_REQUIRED",
                     "result is too large to return inline; provide output.path or use summary mode",
@@ -383,7 +389,7 @@ class DataTransformer:
                 result_descriptor = {"kind": "summary"}
             else:
                 result_descriptor = {"kind": "inline", "data": inline}
-            if mode == "inline" and inline_fits:
+            if not is_dry_run and mode == "inline" and inline_fits:
                 result_descriptor = {"kind": "inline", "data": inline}
                 if output_reference is not None:
                     result_descriptor["output"] = output_reference

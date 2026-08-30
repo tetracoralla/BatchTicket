@@ -90,6 +90,41 @@ def publish_staged_output(staging: Path, target: Path, overwrite: bool) -> None:
         ) from exc
 
 
+def check_output_feasibility(
+    workspace: Workspace, dataset: DataSet, data_format: str
+) -> None:
+    """Reject format/data combinations the writer cannot represent, before any write.
+
+    Dry-run calls the same check so it reaches the same decision as the real run.
+    """
+    if not dataset.is_table:
+        if data_format not in {"json", "yaml"}:
+            raise DataTransformerError(
+                "E_TYPE_MISMATCH",
+                "tree output supports only JSON and YAML",
+                {"format": data_format},
+            )
+        return
+    columns = workspace.columns(dataset.table_name or "")
+    if not columns:
+        if data_format == "parquet":
+            raise DataTransformerError(
+                "E_OUTPUT_EMPTY_SCHEMA",
+                "cannot write schema-less empty data to Parquet",
+            )
+        return
+    if workspace.row_count(dataset.table_name or "") == 0 and data_format in {
+        "json",
+        "jsonl",
+        "yaml",
+    }:
+        raise DataTransformerError(
+            "E_OUTPUT_SCHEMA_LOSS",
+            "this output format cannot preserve the schema of an empty table",
+            {"format": data_format, "fields": columns},
+        )
+
+
 def write_output(
     workspace: Workspace,
     dataset: DataSet,
@@ -143,6 +178,7 @@ def write_output(
 
 
 def _write_table(workspace: Workspace, dataset: DataSet, path: Path, data_format: str) -> None:
+    check_output_feasibility(workspace, dataset, data_format)
     table = dataset.table_name or ""
     columns = workspace.columns(table)
     if not columns:
@@ -150,18 +186,7 @@ def _write_table(workspace: Workspace, dataset: DataSet, path: Path, data_format
             path.write_text("[]\n", encoding="utf-8")
         elif data_format in {"jsonl", "csv", "tsv", "yaml"}:
             path.write_text("", encoding="utf-8")
-        else:
-            raise DataTransformerError(
-                "E_OUTPUT_EMPTY_SCHEMA",
-                "cannot write schema-less empty data to Parquet",
-            )
         return
-    if workspace.row_count(table) == 0 and data_format in {"json", "jsonl", "yaml"}:
-        raise DataTransformerError(
-            "E_OUTPUT_SCHEMA_LOSS",
-            "this output format cannot preserve the schema of an empty table",
-            {"format": data_format, "fields": columns},
-        )
     select = ", ".join(quote_identifier(column) for column in columns)
     query = (
         f"SELECT {select} FROM {quote_identifier(table)} "
@@ -216,6 +241,12 @@ def _write_table(workspace: Workspace, dataset: DataSet, path: Path, data_format
 
 
 def _write_tree(value: Any, path: Path, data_format: str) -> None:
+    if data_format not in {"json", "yaml"}:
+        raise DataTransformerError(
+            "E_TYPE_MISMATCH",
+            "tree output supports only JSON and YAML",
+            {"format": data_format},
+        )
     if data_format == "json":
         path.write_text(
             json.dumps(json_safe(value), ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
@@ -223,12 +254,6 @@ def _write_tree(value: Any, path: Path, data_format: str) -> None:
     elif data_format == "yaml":
         path.write_text(
             yaml.safe_dump(json_safe(value), allow_unicode=True, sort_keys=False), encoding="utf-8"
-        )
-    else:
-        raise DataTransformerError(
-            "E_TYPE_MISMATCH",
-            "tree output supports only JSON and YAML",
-            {"format": data_format},
         )
 
 

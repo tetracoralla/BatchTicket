@@ -72,6 +72,27 @@ def _check_wheel(wheel: Path, license_text: bytes) -> None:
         schema_suffix = "data_transformer/schemas/transformation-plan.schema.json"
         if not any(name.endswith(schema_suffix) for name in names):
             raise ValueError("wheel does not contain the published Transformation Plan schema")
+        capability_schemas = {
+            "structured-data.inspect.input.schema.json",
+            "structured-data.inspect.output.schema.json",
+            "structured-data.validate.input.schema.json",
+            "structured-data.validate.output.schema.json",
+        }
+        packaged_capability_schemas = {
+            PurePosixPath(name).name
+            for name in names
+            if "data_transformer/capability_schemas/" in name
+        }
+        if packaged_capability_schemas != capability_schemas:
+            raise ValueError("wheel does not contain the complete Capability schema set")
+        entry_points_name = _only(
+            [Path(name) for name in names if name.endswith(".dist-info/entry_points.txt")],
+            "wheel entry points",
+        ).as_posix()
+        entry_points = archive.read(entry_points_name).decode("utf-8")
+        for command in ("adt-capability", "adt-transport-schema-probe"):
+            if f"{command} = " not in entry_points:
+                raise ValueError(f"wheel is missing the {command} entry point")
 
 
 def _check_sdist(sdist: Path, version: str, license_text: bytes) -> None:

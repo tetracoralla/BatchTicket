@@ -59,11 +59,15 @@ its bundled executable directly. The generated local marketplace points Codex at
 self-contained directory. Rebuilding with `--replace` refuses symlinked output roots or
 generated targets before deleting or overwriting anything.
 
-The generated self-contained bundle is currently a **local validation artifact**, not a public
-release asset. It incorporates a Python runtime, Python packages, and native libraries whose
-third-party license materials are not yet assembled into the archive. Do not upload the plugin
-directory, archive, or checksum to a GitHub Release. This does not restrict publishing or using
-the Apache-2.0 source repository; see the [release checklist](docs/RELEASE_CHECKLIST.md).
+Each generated bundle contains `legal/THIRD_PARTY_NOTICES.md`, the copied license texts under
+`legal/licenses/`, and `legal/sbom.cdx.json`. The inventory is built from the locked runtime
+dependency closure plus the incorporated CPython runtime and PyInstaller bootloader; it is checked
+again from the archive by the plugin test path. The archive is stable for the same source, lock,
+and build environment, so its companion SHA-256 file identifies the exact generated bundle.
+
+This local macOS arm64 artifact is not a publication action. A GitHub Release upload, code-signing
+or notarization decision still requires separate authorization; see the
+[release checklist](docs/RELEASE_CHECKLIST.md).
 
 The example transformation returns two records inline and reports through `execution_effects` that one input row was removed. File output is opt-in through `output.path`; existing files are never replaced unless `output.overwrite` is explicitly true.
 
@@ -97,6 +101,27 @@ v1. Run that plan through `data_transform`; the adapter does not create a separa
 path or fifth public tool.
 
 ## Library API
+
+### Portable Capability provider
+
+`capabilities/provider.json` binds the read-only `data_inspect` and
+`data_validate` core paths to
+`org.openadam.structured-data.analyze@0.1.0`. The JSONL adapter validates the
+portable request, preserves the same restricted workspace and isolated worker,
+and projects provider results into the canonical shape and validation
+contracts. A failed content constraint remains a successful result with
+`valid=false`; malformed constraints and execution failures use stable
+Capability errors.
+
+The v0.2 Provider Manifest declares canonical JSONL adapter targets for
+`inspect` and `validate` separately from the public FastMCP tool targets. Its
+executable transport schema probe introspects the current `data_inspect` and
+`data_validate` tool schemas, keeping canonical adapter and live transport
+conformance as separate evidence lanes.
+
+Installed source wheels expose `adt-capability` and
+`adt-transport-schema-probe`. Their canonical schemas are package resources,
+so neither command depends on a repository checkout or a sibling Procedure.
 
 ```python
 from data_transformer import DataTransformer

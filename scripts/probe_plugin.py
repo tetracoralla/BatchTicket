@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import shutil
 import tempfile
 from pathlib import Path
 from typing import Any
@@ -15,19 +16,27 @@ EXPECTED_TOOLS = {"data_inspect", "data_transform", "data_validate", "data_diff"
 
 
 async def _probe(bundle: Path) -> dict[str, Any]:
-    for required_file in ("LICENSE", "NOTICE"):
-        if not (bundle / required_file).is_file():
-            raise FileNotFoundError(f"plugin legal file is missing: {required_file}")
-
-    config = json.loads((bundle / ".mcp.json").read_text(encoding="utf-8"))["mcpServers"][
-        "data-transformer"
-    ]
-    command = (bundle / config["command"]).resolve()
-    if not command.is_file():
-        raise FileNotFoundError(f"plugin entrypoint is missing: {command}")
-
     with tempfile.TemporaryDirectory(prefix="adt-plugin-probe-") as temporary:
         harness = Path(temporary).resolve()
+        copied_bundle = harness / "copied-plugin"
+        shutil.copytree(bundle, copied_bundle)
+        bundle = copied_bundle
+        required_legal_files = (
+            "LICENSE",
+            "NOTICE",
+            "legal/THIRD_PARTY_NOTICES.md",
+            "legal/sbom.cdx.json",
+        )
+        for required_file in required_legal_files:
+            if not (bundle / required_file).is_file():
+                raise FileNotFoundError(f"plugin legal file is missing: {required_file}")
+
+        config = json.loads((bundle / ".mcp.json").read_text(encoding="utf-8"))["mcpServers"][
+            "data-transformer"
+        ]
+        command = (bundle / config["command"]).resolve()
+        if not command.is_file():
+            raise FileNotFoundError(f"plugin entrypoint is missing: {command}")
         workspace = harness / "primary"
         alternate = harness / "alternate"
         workspace.mkdir()
@@ -79,11 +88,43 @@ async def _probe(bundle: Path) -> dict[str, Any]:
                 names = {tool.name for tool in tools.tools}
                 if names != EXPECTED_TOOLS:
                     raise AssertionError(f"unexpected tools: {sorted(names)}")
+                catalog = {
+                    "tool_count": len(tools.tools),
+                    "input_schema_bytes": sum(
+                        len(json.dumps(tool.inputSchema, separators=(",", ":")).encode("utf-8"))
+                        for tool in tools.tools
+                    ),
+                    "output_schema_bytes": sum(
+                        len(
+                            json.dumps(tool.outputSchema, separators=(",", ":")).encode("utf-8")
+                        )
+                        for tool in tools.tools
+                    ),
+                    "tool_definition_bytes": len(
+                        json.dumps(
+                            [
+                                tool.model_dump(by_alias=True, exclude_none=True)
+                                for tool in tools.tools
+                            ],
+                            separators=(",", ":"),
+                        ).encode("utf-8")
+                    ),
+                }
                 for tool in tools.tools:
                     properties = tool.inputSchema.get("properties", {})
                     if "ctx" in properties or "workspace" not in properties:
                         raise AssertionError(
                             f"installed schema is not self-sufficient: {tool.name}"
+                        )
+                    output_schema = tool.outputSchema
+                    if (
+                        not isinstance(output_schema, dict)
+                        or output_schema.get("type") != "object"
+                        or len(output_schema.get("anyOf", [])) != 2
+                    ):
+                        raise AssertionError(
+                            "installed tool is missing a typed success/error output schema: "
+                            f"{tool.name}"
                         )
 
                 inspected = await session.call_tool(
@@ -236,6 +277,7 @@ async def _probe(bundle: Path) -> dict[str, Any]:
         return {
             "status": "ok",
             "tools": sorted(names),
+            "catalog": catalog,
             "workspace_authority": "mcp-roots",
             "entrypoint": str(command),
             "sequences": [

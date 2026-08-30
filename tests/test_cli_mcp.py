@@ -39,6 +39,12 @@ def test_mcp_registry_exposes_only_four_task_level_tools() -> None:
     for tool in tools:
         assert "ctx" not in tool.parameters["properties"]
         assert "workspace" in tool.parameters["properties"]
+        # Codex rejects a structured-result server that advertises no output
+        # contract.  The real adapter returns CallToolResult, so this also
+        # ensures FastMCP validates each structuredContent object at runtime.
+        assert tool.output_schema is not None
+        assert tool.output_schema["type"] == "object"
+        assert len(tool.output_schema["anyOf"]) == 2
     inspect = next(tool for tool in tools if tool.name == "data_inspect")
     assert "target_schema" in inspect.parameters["properties"]
     assert "mappings" in inspect.parameters["properties"]
@@ -93,6 +99,10 @@ def test_mcp_stdio_activation_and_real_tool_call() -> None:
                 "data_validate",
                 "data_diff",
             }
+            for tool in tools.tools:
+                assert tool.outputSchema is not None
+                assert tool.outputSchema["type"] == "object"
+                assert len(tool.outputSchema["anyOf"]) == 2
             call = await session.call_tool(
                 "data_inspect",
                 {"source": {"inline": [{"id": 1}, {"id": 2}]}, "sample_rows": 1},
@@ -171,7 +181,9 @@ def test_mcp_stdio_activation_and_real_tool_call() -> None:
                 },
             )
             assert invalid.isError is True
-            assert invalid.structuredContent is None
+            assert invalid.structuredContent["status"] == "error"
+            assert invalid.structuredContent["error"]["code"] == "E_EXPRESSION_INVALID"
+            assert invalid.structuredContent["error"]["details"]["path"]
 
     asyncio.run(exercise())
 

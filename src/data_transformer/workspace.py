@@ -137,7 +137,7 @@ class Workspace:
         *,
         resource_root: Path | None = None,
         restricted_paths: bool = False,
-    ) -> int:
+    ) -> None:
         self.limits = limits or Limits()
         self.resource_root = resource_root.resolve() if resource_root is not None else None
         self.restricted_paths = restricted_paths

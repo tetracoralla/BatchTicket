@@ -1,0 +1,10 @@
+{
+  "data": {
+    "users": [
+      {"userId": 1, "age": 32, "profile": {"name": "Ada", "country": "UK"}},
+      {"userId": 2, "age": null, "profile": {"name": "Lin", "country": "CN"}},
+      {"userId": 3, "age": 41, "profile": {"name": "Sam", "country": "US"}}
+    ]
+  },
+  "status": 200
+}

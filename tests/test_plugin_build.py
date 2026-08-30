@@ -84,6 +84,56 @@ def test_plugin_archive_rejects_symlink_before_replacement(tmp_path) -> None:
     assert outside.read_text(encoding="utf-8") == "keep"
 
 
+def test_plugin_archive_is_byte_reproducible_for_identical_bundle_content(tmp_path) -> None:
+    module = _build_module()
+    first = tmp_path / "first" / "bundle"
+    second = tmp_path / "second" / "bundle"
+    for bundle in (first, second):
+        (bundle / "nested").mkdir(parents=True)
+        (bundle / "nested" / "payload.txt").write_text("same content\n", encoding="utf-8")
+
+    first_archive, first_checksum = module._archive_bundle(first, replace=False)
+    second_archive, second_checksum = module._archive_bundle(second, replace=False)
+
+    assert first_archive.read_bytes() == second_archive.read_bytes()
+    assert first_checksum.read_text(encoding="utf-8") == second_checksum.read_text(encoding="utf-8")
+
+
+def test_legal_material_is_complete_and_machine_readable(tmp_path) -> None:
+    module = _build_module()
+    module._write_legal_material(tmp_path)
+
+    legal_root = tmp_path / "legal"
+    notices = (legal_root / "THIRD_PARTY_NOTICES.md").read_text(encoding="utf-8")
+    sbom = json.loads((legal_root / "sbom.cdx.json").read_text(encoding="utf-8"))
+
+    assert "CPython" in notices
+    assert "PyInstaller" in notices
+    assert sbom["bomFormat"] == "CycloneDX"
+    assert sbom["specVersion"] == "1.5"
+    assert {component["name"] for component in sbom["components"]} >= {
+        "CPython",
+        "PyInstaller",
+        "duckdb",
+        "mcp",
+    }
+    for component in sbom["components"]:
+        for property_ in component.get("properties", []):
+            if property_["name"] == "batchticket:license-files":
+                for path in property_["value"].split(","):
+                    assert (legal_root / path).is_file()
+
+
+def test_archive_verification_requires_legal_material(tmp_path) -> None:
+    module = _build_module()
+    bundle = tmp_path / "bundle"
+    bundle.mkdir()
+    archive, _ = module._archive_bundle(bundle, replace=False)
+
+    with pytest.raises(ValueError, match="required legal material"):
+        module._verify_archive(bundle, archive)
+
+
 def test_marketplace_rejects_symlink_before_replacement(tmp_path) -> None:
     module = _build_module()
     bundle = tmp_path / "bundle"
