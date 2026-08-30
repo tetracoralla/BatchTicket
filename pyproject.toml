@@ -35,7 +35,7 @@ dependencies = [
 dev = [
   "pyinstaller>=6.16,<7",
   "pytest>=9.0.3,<10",
-  "pytest-cov>=6,<7",
+  "pytest-cov>=6,<8",
   "ruff>=0.12,<1",
 ]
 
