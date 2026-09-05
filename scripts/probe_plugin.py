@@ -3,7 +3,9 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import os
 import shutil
+import subprocess
 import tempfile
 from pathlib import Path
 from typing import Any
@@ -37,6 +39,21 @@ async def _probe(bundle: Path) -> dict[str, Any]:
         command = (bundle / config["command"]).resolve()
         if not command.is_file():
             raise FileNotFoundError(f"plugin entrypoint is missing: {command}")
+        capability_manifest = json.loads(
+            (bundle / "capabilities" / "provider.json").read_text(encoding="utf-8")
+        )
+        implementation = capability_manifest["implementations"][0]
+        if implementation["adapter"] != {
+            "protocol": "openadam.capability-jsonl.v0.1",
+            "command": "./runtime/adt-capability",
+            "args": [],
+            "cwd": ".",
+        }:
+            raise AssertionError("installed Capability adapter binding is not immutable")
+        capability_command = (bundle / "runtime" / "adt-capability").resolve()
+        schema_probe_command = (
+            bundle / "runtime" / "adt-transport-schema-probe"
+        ).resolve()
         workspace = harness / "primary"
         alternate = harness / "alternate"
         workspace.mkdir()
@@ -52,6 +69,63 @@ async def _probe(bundle: Path) -> dict[str, Any]:
             encoding="utf-8",
         )
         (alternate / "input.json").write_text('[{"id":99}]', encoding="utf-8")
+        capability_environment = {
+            "PATH": "/usr/bin:/bin:/usr/sbin:/sbin",
+            "TMPDIR": tempfile.gettempdir(),
+            "PYTHONNOUSERSITE": "1",
+            "OPENADAM_CAPABILITY_WORKSPACE_ROOT": str(workspace),
+        }
+        capability_request = {
+            "id": "installed-capability",
+            "operationId": "inspect",
+            "input": {"source": {"path": "input.json"}, "sample_rows": 1},
+        }
+        capability = subprocess.run(
+            [str(capability_command)],
+            cwd=bundle,
+            env={**os.environ, **capability_environment},
+            input=json.dumps(capability_request, separators=(",", ":")) + "\n",
+            text=True,
+            capture_output=True,
+            timeout=30,
+            check=False,
+        )
+        if capability.returncode != 0:
+            raise AssertionError(
+                f"installed Capability adapter failed: {capability.returncode}: {capability.stderr}"
+            )
+        capability_result = json.loads(capability.stdout)
+        if (
+            capability_result.get("ok") is not True
+            or capability_result["result"]["shape"]["rows"] != 2
+        ):
+            raise AssertionError(f"installed Capability result is invalid: {capability_result}")
+
+        schema_request = {
+            "id": "transport-schema",
+            "capabilityId": "org.openadam.structured-data.analyze",
+            "capabilityVersion": "0.1.0",
+        }
+        schema_probe = subprocess.run(
+            [str(schema_probe_command)],
+            cwd=bundle,
+            env={**os.environ, **capability_environment},
+            input=json.dumps(schema_request, separators=(",", ":")) + "\n",
+            text=True,
+            capture_output=True,
+            timeout=30,
+            check=False,
+        )
+        if schema_probe.returncode != 0:
+            raise AssertionError(
+                "installed transport schema probe failed: "
+                f"{schema_probe.returncode}: {schema_probe.stderr}"
+            )
+        schema_result = json.loads(schema_probe.stdout)
+        if schema_result.get("ok") is not True or {
+            binding["operationId"] for binding in schema_result["bindings"]
+        } != {"inspect", "validate"}:
+            raise AssertionError(f"installed transport schema result is invalid: {schema_result}")
         granted_roots = [types.Root(uri=workspace.as_uri(), name="probe-workspace")]
 
         async def list_roots(
@@ -291,6 +365,8 @@ async def _probe(bundle: Path) -> dict[str, Any]:
                 "unnamed-root",
                 "multiple-root-selection",
                 "missing-grant",
+                "capability-adapter",
+                "transport-schema-probe",
             ],
         }
 

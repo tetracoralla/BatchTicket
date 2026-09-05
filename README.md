@@ -122,6 +122,11 @@ conformance as separate evidence lanes.
 Installed source wheels expose `adt-capability` and
 `adt-transport-schema-probe`. Their canonical schemas are package resources,
 so neither command depends on a repository checkout or a sibling Procedure.
+The self-contained plugin exposes the same two interfaces through the
+`runtime/adt-capability` and `runtime/adt-transport-schema-probe` launchers,
+which reuse one frozen runtime, and ships a release-bound Provider Manifest plus canonical
+schemas. Installed Hosts can therefore use the Capability without a source
+checkout, Python environment, package manager, or network access.
 
 ```python
 from data_transformer import DataTransformer

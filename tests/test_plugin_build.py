@@ -134,6 +134,35 @@ def test_archive_verification_requires_legal_material(tmp_path) -> None:
         module._verify_archive(bundle, archive)
 
 
+def test_plugin_build_writes_immutable_capability_bindings(tmp_path) -> None:
+    module = _build_module()
+
+    module._write_capability_material(tmp_path)
+
+    manifest = json.loads(
+        (tmp_path / "capabilities" / "provider.json").read_text(encoding="utf-8")
+    )
+    implementation = manifest["implementations"][0]
+    assert implementation["adapter"] == {
+        "protocol": "openadam.capability-jsonl.v0.1",
+        "command": "./runtime/adt-capability",
+        "args": [],
+        "cwd": ".",
+    }
+    assert implementation["transportSchemaProbe"] == {
+        "protocol": "openadam.transport-schema-jsonl.v0.1",
+        "command": "./runtime/adt-transport-schema-probe",
+        "args": [],
+        "cwd": ".",
+    }
+    assert sorted(path.name for path in (tmp_path / "capabilities" / "schemas").iterdir()) == [
+        "structured-data.inspect.input.schema.json",
+        "structured-data.inspect.output.schema.json",
+        "structured-data.validate.input.schema.json",
+        "structured-data.validate.output.schema.json",
+    ]
+
+
 def test_marketplace_rejects_symlink_before_replacement(tmp_path) -> None:
     module = _build_module()
     bundle = tmp_path / "bundle"

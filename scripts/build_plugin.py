@@ -393,6 +393,8 @@ def _build_runtime(destination: Path) -> None:
             "adt-mcp",
             "--paths",
             str(REPO_ROOT / "src"),
+            "--add-data",
+            f"{REPO_ROOT / 'capabilities' / 'schemas'}:data_transformer/capability_schemas",
             "--distpath",
             str(work / "dist"),
             "--workpath",
@@ -413,6 +415,45 @@ def _build_runtime(destination: Path) -> None:
         shutil.copytree(work / "dist" / "adt-mcp", destination)
 
 
+def _write_capability_material(destination: Path) -> None:
+    source_root = REPO_ROOT / "capabilities"
+    capability_root = destination / "capabilities"
+    shutil.copytree(source_root / "schemas", capability_root / "schemas")
+    manifest = json.loads((source_root / "provider.json").read_text(encoding="utf-8"))
+    if manifest.get("provider", {}).get("version") != _project_version():
+        raise ValueError("Provider Manifest version does not match pyproject.toml")
+    for implementation in manifest.get("implementations", []):
+        implementation["adapter"] = {
+            "protocol": "openadam.capability-jsonl.v0.1",
+            "command": "./runtime/adt-capability",
+            "args": [],
+            "cwd": ".",
+        }
+        implementation["transportSchemaProbe"] = {
+            "protocol": "openadam.transport-schema-jsonl.v0.1",
+            "command": "./runtime/adt-transport-schema-probe",
+            "args": [],
+            "cwd": ".",
+        }
+    (capability_root / "provider.json").write_text(
+        json.dumps(manifest, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+
+
+def _write_runtime_launcher(destination: Path, name: str, mode: str) -> None:
+    launcher = destination / "runtime" / name
+    launcher.parent.mkdir(parents=True, exist_ok=True)
+    launcher.write_text(
+        "#!/bin/sh\n"
+        "set -eu\n"
+        'runtime_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)\n'
+        f'exec "$runtime_dir/adt-mcp/adt-mcp" {mode} "$@"\n',
+        encoding="utf-8",
+    )
+    launcher.chmod(0o755)
+
+
 def _assemble_bundle(destination: Path, version: str) -> None:
     plugin_manifest = json.loads(
         (REPO_ROOT / ".codex-plugin" / "plugin.json").read_text(encoding="utf-8")
@@ -427,6 +468,13 @@ def _assemble_bundle(destination: Path, version: str) -> None:
     shutil.copy2(REPO_ROOT / "LICENSE", destination / "LICENSE")
     shutil.copy2(REPO_ROOT / "NOTICE", destination / "NOTICE")
     _build_runtime(destination / "runtime" / "adt-mcp")
+    _write_runtime_launcher(destination, "adt-capability", "capability")
+    _write_runtime_launcher(
+        destination,
+        "adt-transport-schema-probe",
+        "transport-schema-probe",
+    )
+    _write_capability_material(destination)
     _write_legal_material(destination)
 
     manifest = {
@@ -436,6 +484,14 @@ def _assemble_bundle(destination: Path, version: str) -> None:
         "architecture": platform.machine().lower(),
         "entrypoint": "runtime/adt-mcp/adt-mcp",
         "transport": "stdio",
+        "capability": {
+            "entrypoint": "runtime/adt-capability",
+            "manifest": "capabilities/provider.json",
+            "schemas": "capabilities/schemas",
+        },
+        "transportSchemaProbe": {
+            "entrypoint": "runtime/adt-transport-schema-probe",
+        },
     }
     (destination / "bundle.json").write_text(
         json.dumps(manifest, indent=2, sort_keys=True) + "\n",
